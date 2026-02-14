@@ -1,0 +1,7 @@
+{
+  "name": "ScoutVision AI - Soccer Match Analyst",
+  "description": "Professional soccer match analysis platform using Gemini AI to identify teams, goals, and assists from match footage.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
