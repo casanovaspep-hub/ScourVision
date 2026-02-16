@@ -77,13 +77,13 @@ export interface InitialMatchData {
     name: string;
     initialFormation?: string;
     lineup: SelectedPlayerInfo[];
-    subs: SelectedPlayerInfo[]; // Added subs to InitialMatchData
+    subs: SelectedPlayerInfo[];
   };
   teamB: {
     name: string;
     initialFormation?: string;
     lineup: SelectedPlayerInfo[];
-    subs: SelectedPlayerInfo[]; // Added subs to InitialMatchData
+    subs: SelectedPlayerInfo[];
   };
 }
 
@@ -121,6 +121,11 @@ export interface MatchAnalysis {
     dorsal: number;
     individualAnalysis?: string;
     zone: 'ofensiva' | 'media' | 'defensiva';
+    improvementFeedback?: { // Nuevo: feedback de mejora para el jugador
+      strengths: string[];
+      weaknesses: string[];
+      improvementAdvice: string[];
+    };
   }[];
   targetTeamSide: 'local' | 'visitante';
 }

@@ -2,8 +2,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { MatchAnalysis, SelectedPlayerInfo, InitialMatchData, Player } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 const sanitizeJsonResponse = (text: string): string => {
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   return jsonMatch ? jsonMatch[0] : text;
@@ -12,6 +10,9 @@ const sanitizeJsonResponse = (text: string): string => {
 export const getInitialMatchLineups = async (
   actaPart: { mimeType: string, data: string },
 ): Promise<InitialMatchData> => {
+  // Se inicializa GoogleGenAI justo antes de la llamada API
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
   const systemInstruction = `ERES UN ANALISTA TÁCTICO Y SCOUT PROFESIONAL.
 TU MISIÓN ES EXTRAER LA INFORMACIÓN INICIAL DE UN PARTIDO DE FÚTBOL A PARTIR DE UN ACTA OFICIAL (PDF).
 
@@ -84,8 +85,11 @@ export const analyzeFullMatch = async (
     videoParts: { mimeType: string, data: string }[],
     actaPart: { mimeType: string, data: string }
   },
-  selectedPlayers: SelectedPlayerInfo[] = []
+  selectedPlayers: SelectedPlayerInfo[] = [],
 ): Promise<MatchAnalysis> => {
+  // Se inicializa GoogleGenAI justo antes de la llamada API
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
   const { targetTeam, side1, side2, videoParts, actaPart } = matchData;
   
   let playerAnalysisInstruction = `
@@ -102,8 +106,21 @@ export const analyzeFullMatch = async (
        - **ADICIONALMENTE**, DEBES incluir un análisis individual para los siguientes jugadores, que han sido seleccionados específicamente: ${playersList}.
        - Si alguno de estos jugadores seleccionados por el usuario coincide (mismo nombre y dorsal) con un jugador que ya has identificado como influyente, **DEBES COMBINAR Y EXPANDIR el análisis en una única entrada para ese jugador en la lista 'keyPerformers'**. Asegúrate de que el análisis sea lo más completo posible y aparezca solo una vez.
        - Si un jugador seleccionado por el usuario no ha sido identificado previamente por ti como clave, simplemente añádelo con su "zone" inferida y un "individualAnalysis" detallado.
+       - **PUNTOS DE MEJORA:** Para CADA UNO de estos jugadores (tanto los clave identificados por ti como los seleccionados por el usuario), además del 'individualAnalysis' general, DEBES proporcionar un objeto 'improvementFeedback' con:
+            - 'strengths': Una lista de 2-3 frases cortas destacando sus puntos fuertes relevantes para su posición y el sistema de juego del equipo.
+            - 'weaknesses': Una lista de 2-3 frases cortas identificando áreas claras de oportunidad o puntos débiles específicos.
+            - 'improvementAdvice': Una lista de 2-3 consejos accionables y específicos para mejorar su rendimiento, basándose en su posición, el sistema de juego del equipo y las debilidades identificadas. Sé concreto y enfocado tácticamente.
   `;
+  } else {
+    // If no specific players are selected, still provide improvement feedback for AI-identified key performers
+    playerAnalysisInstruction += `
+       - **PUNTOS DE MEJORA:** Para CADA UNO de los jugadores clave identificados, además del 'individualAnalysis' general, DEBES proporcionar un objeto 'improvementFeedback' con:
+            - 'strengths': Una lista de 2-3 frases cortas destacando sus puntos fuertes relevantes para su posición y el sistema de juego del equipo.
+            - 'weaknesses': Una lista de 2-3 frases cortas identificando áreas claras de oportunidad o puntos débiles específicos.
+            - 'improvementAdvice': Una lista de 2-3 consejos accionables y específicos para mejorar su rendimiento, basándose en su posición, el sistema de juego del equipo y las debilidades identificadas. Sé concreto y enfocado tácticamente.
+    `;
   }
+
 
   const systemInstruction = `ERES UN ANALISTA TÁCTICO Y SCOUT PROFESIONAL UEFA PRO.
 TU MISIÓN ES REALIZAR UNA AUDITORÍA TÉCNICA Y TÁCTICA DE NIVEL ELITE.
@@ -136,7 +153,7 @@ REPORTE EN ESPAÑOL TÉCNICO (Jerga: "salida lavolpiana", "basculación", "inter
   const parts: any[] = [
     ...videoParts.map(vp => ({ inlineData: vp })),
     { inlineData: actaPart },
-    { text: `Realiza el análisis táctico extenso y detallado del equipo ${targetTeam}. ${selectedPlayers && selectedPlayers.length > 0 ? `Además de identificar tus propios jugadores clave, incluye análisis para los jugadores seleccionados: ${selectedPlayers.map(p => `${p.name} (Dorsal ${p.dorsal})`).join(', ')}. Deduplica y combina los análisis si un jugador es tanto clave como seleccionado, asegurando una única entrada completa en 'keyPerformers'.` : 'Identifica a los jugadores clave para el análisis individual.'} Asegúrate de categorizar a los jugadores analizados en zonas defensiva, media y ofensiva, y de incluir todos los aspectos del 'technicalReport' solicitado para el cuerpo técnico y las estadísticas del partido, así como un 'tacticalSummary' detallado.` }
+    { text: `Realiza el análisis táctico extenso y detallado del equipo ${targetTeam}. ${selectedPlayers && selectedPlayers.length > 0 ? `Además de identificar tus propios jugadores clave, incluye análisis para los jugadores seleccionados: ${selectedPlayers.map(p => `${p.name} (Dorsal ${p.dorsal})`).join(', ')}. Deduplica y combina los análisis si un jugador es tanto clave como seleccionado, asegurando una única entrada completa en 'keyPerformers'. Para cada jugador clave/seleccionado, proporciona también puntos de mejora específicos (fortalezas, debilidades, consejos).` : 'Identifica a los jugadores clave para el análisis individual y proporciona también sus puntos de mejora (fortalezas, debilidades, consejos).'} Asegúrate de categorizar a los jugadores analizados en zonas defensiva, media y ofensiva, y de incluir todos los aspectos del 'technicalReport' solicitado para el cuerpo técnico y las estadísticas del partido, así como un 'tacticalSummary' detallado.` }
   ];
 
   try {
@@ -224,11 +241,20 @@ REPORTE EN ESPAÑOL TÉCNICO (Jerga: "salida lavolpiana", "basculación", "inter
                   team: { type: Type.STRING }, 
                   dorsal: { type: Type.NUMBER }, 
                   individualAnalysis: { type: Type.STRING },
-                  zone: { type: Type.STRING, enum: ['defensiva', 'media', 'ofensiva'] }
+                  zone: { type: Type.STRING, enum: ['defensiva', 'media', 'ofensiva'] },
+                  improvementFeedback: { // Añadido improvementFeedback
+                    type: Type.OBJECT,
+                    properties: {
+                      strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
+                      weaknesses: { type: Type.ARRAY, items: { type: Type.STRING } },
+                      improvementAdvice: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    },
+                    required: ["strengths", "weaknesses", "improvementAdvice"]
+                  }
                 },
-                required: ["player", "dorsal", "zone", "individualAnalysis"]
+                required: ["player", "dorsal", "zone", "individualAnalysis", "improvementFeedback"]
               } 
-            }
+            },
           },
           required: ["score", "stats", "teamA", "teamB", "tacticalSummary", "events", "keyPerformers", "technicalReport"]
         }

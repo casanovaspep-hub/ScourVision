@@ -19,12 +19,12 @@ import {
   ChevronRight,
   Download,
   CheckCircle2,
-  FileDown,
+  FileDown, 
   Star,
   Users,
   ShieldAlert,
   ArrowRightLeft,
-  Video,
+  Video, 
   Layout,
   Cpu,
   RefreshCw,
@@ -38,7 +38,7 @@ import {
   HandMetal,
   Hammer,
   FileCheck2,
-  ScrollText,
+  ScrollText, 
   TrendingUp,
   BrainCircuit,
   Lightbulb,
@@ -54,10 +54,14 @@ import {
   UserCheck,
   User,
   SquareCheckBig,
-  Square
+  Square,
+  BadgeCent, 
+  CircleX, 
+  Sparkles 
 } from 'lucide-react';
-import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
+// Eliminadas las importaciones de jspdf y jspdf-autotable
+// import { jsPDF } from 'jspdf'; 
+// import 'jspdf-autotable'; 
 
 const App: React.FC = () => {
   const [stage, setStage] = useState<AppStage>('upload');
@@ -182,7 +186,6 @@ const App: React.FC = () => {
       if (isSelected) {
         return prev.filter(p => p.dorsal !== player.dorsal || p.name !== player.name);
       } else {
-        // No longer limiting player selection
         return [...prev, player];
       }
     });
@@ -226,148 +229,7 @@ const App: React.FC = () => {
     );
   };
 
-  const exportToPDF = () => {
-    if (!analysis) return;
-    const doc = new jsPDF();
-    const primaryColor = [16, 185, 129];
-    const darkColor = [15, 23, 42];
-    const targetTeamName = analysis.targetTeamSide === 'local' ? analysis.teamA.name : analysis.teamB.name;
-
-    // --- Portada ---
-    doc.setFillColor(darkColor[0], darkColor[1], darkColor[2]);
-    doc.rect(0, 0, 210, 50, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(24);
-    doc.setFont("helvetica", "bold");
-    doc.text('SCOUTVISION PRO - DOSSIER TÁCTICO', 105, 25, { align: 'center' });
-    doc.setFontSize(10);
-    doc.text(`AUDITORÍA INTEGRAL DE RENDIMIENTO: ${targetTeamName}`, 105, 38, { align: 'center' });
-
-    // --- Marcador ---
-    doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
-    doc.setFontSize(16);
-    doc.text(`${analysis.teamA.name} ${analysis.score.teamA} - ${analysis.score.teamB} ${analysis.teamB.name}`, 105, 65, { align: 'center' });
-
-    // --- Tabla Stats ---
-    const statsData = Object.keys(statLabels).map(key => {
-      const statsObj = (analysis.stats as any)[key] || { teamA: 0, teamB: 0 };
-      const valA = statsObj.teamA ?? 0;
-      const valB = statsObj.teamB ?? 0;
-      const suffix = (key === 'possession' || key === 'passAccuracy') ? '%' : '';
-      return [statLabels[key], `${valA}${suffix}`, `${valB}${suffix}`];
-    });
-    (doc as any).autoTable({
-      startY: 75,
-      head: [['Parámetro', 'Local', 'Visitante']],
-      body: statsData,
-      theme: 'grid',
-      headStyles: { fillColor: primaryColor },
-      styles: { fontSize: 8, halign: 'center' }
-    });
-
-    // --- Informe Táctico Colectivo ---
-    let currentY = (doc as any).lastAutoTable.finalY + 15;
-    doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
-    doc.text('ANÁLISIS TÁCTICO COLECTIVO', 10, currentY);
-
-    const addTechnicalPhaseToPdf = (title: string, phase: TechnicalPhase, yPos: number, pageBreakThreshold: number = 260) => {
-        if (yPos > pageBreakThreshold) {
-            doc.addPage();
-            yPos = 20;
-        }
-        doc.setFontSize(12);
-        doc.setFont("helvetica", "bold");
-        doc.text(title, 10, yPos);
-        yPos += 5;
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "normal");
-        const splitDesc = doc.splitTextToSize(phase.description, 180);
-        doc.text(splitDesc, 10, yPos);
-        yPos += (splitDesc.length * 4) + 3; // Adjust Y based on lines of text
-
-        if (phase.keyAspects && phase.keyAspects.length > 0) {
-            if (yPos > pageBreakThreshold - 20) { // Ensure space for key aspects
-                doc.addPage();
-                yPos = 20;
-            }
-            doc.setFontSize(10);
-            doc.setFont("helvetica", "bold");
-            doc.text('Puntos Clave:', 10, yPos);
-            yPos += 4;
-            doc.setFontSize(9);
-            doc.setFont("helvetica", "normal");
-            phase.keyAspects.forEach(aspect => {
-                const splitAspect = doc.splitTextToSize(`• ${aspect}`, 180);
-                doc.text(splitAspect, 10, yPos);
-                yPos += (splitAspect.length * 4);
-            });
-            yPos += 5; // Extra space after key aspects
-        }
-        return yPos;
-    };
-
-    currentY = addTechnicalPhaseToPdf('Fase Ofensiva:', analysis.technicalReport.offensivePhase, currentY + 10);
-    currentY = addTechnicalPhaseToPdf('Fase Defensiva:', analysis.technicalReport.defensivePhase, currentY);
-    currentY = addTechnicalPhaseToPdf('Transiciones (Ataque-Defensa / Defensa-Ataque):', analysis.technicalReport.transitions, currentY);
-    currentY = addTechnicalPhaseToPdf('Estrategia y Balón Parado:', analysis.technicalReport.setPieces, currentY);
-    
-    // --- Conclusiones Tácticas Clave (Separado) ---
-    if (currentY > 260) { doc.addPage(); currentY = 20; }
-    doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]); // Highlight conclusion
-    doc.text('CONCLUSIONES TÁCTICAS CLAVE', 10, currentY);
-    currentY += 8;
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
-    const splitSummary = doc.splitTextToSize(analysis.tacticalSummary, 180);
-    doc.text(splitSummary, 10, currentY);
-    currentY += (splitSummary.length * 4) + 10;
-
-
-    // --- Scouting Individual por Zonas ---
-    doc.addPage();
-    doc.setFontSize(16);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
-    doc.text('INFORME DE RENDIMIENTO POR ZONAS', 10, 20);
-    
-    const zones = [
-      { id: 'defensiva', label: 'Zona Defensiva (Bloque Bajo)' },
-      { id: 'media', label: 'Zona Media (Sala de Máquinas)' },
-      { id: 'ofensiva', label: 'Zona Ofensiva (Frontal)' }
-    ];
-
-    currentY = 30;
-
-    zones.forEach(zone => {
-      const players = analysis.keyPerformers.filter(p => p.zone === zone.id);
-      if (players.length > 0) {
-        if (currentY > 260) { doc.addPage(); currentY = 20; }
-        doc.setFontSize(12);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-        doc.text(zone.label, 10, currentY);
-        doc.setTextColor(0, 0, 0);
-
-        const data = players.map(p => [`#${p.dorsal} ${p.player}`, p.individualAnalysis]);
-        (doc as any).autoTable({
-          startY: currentY + 5,
-          head: [['Jugador', 'Análisis Táctico']],
-          body: data,
-          theme: 'striped',
-          styles: { fontSize: 8 },
-          columnStyles: { 0: { width: 45, fontStyle: 'bold' } }
-        });
-        currentY = (doc as any).lastAutoTable.finalY + 15;
-      }
-    });
-
-    doc.save(`Dossier_Táctico_${targetTeamName}.pdf`);
-  };
+  // Función exportToPDF eliminada
 
   const targetTeamName = analysis ? (analysis.targetTeamSide === 'local' ? (analysis.teamA?.name || 'Local') : (analysis.teamB?.name || 'Visitante')) : '';
   
@@ -417,11 +279,7 @@ const App: React.FC = () => {
               <p className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em]">Auditoría Táctica UEFA PRO</p>
             </div>
           </div>
-          {analysis && (
-            <button onClick={exportToPDF} className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-6 py-2.5 rounded-xl font-black text-[10px] uppercase transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2">
-               <FileDown className="w-4 h-4" /> Exportar Dossier Táctico
-            </button>
-          )}
+          {/* Botón de exportar PDF eliminado del header */}
         </div>
       </header>
 
@@ -434,14 +292,14 @@ const App: React.FC = () => {
              </div>
              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {[
-                  { id: 'v1', label: '1er Tiempo (Video)', file: videoFile1, icon: <Video /> },
-                  { id: 'v2', label: '2do Tiempo (Video)', file: videoFile2, icon: <Video /> },
-                  { id: 'acta', label: 'Acta Oficial (PDF)', file: actaFile, icon: <ScrollText />, accept: '.pdf' }
+                  { id: 'v1', label: '1er Tiempo (Video)', file: videoFile1, IconComponent: Video },
+                  { id: 'v2', label: '2do Tiempo (Video)', file: videoFile2, IconComponent: Video },
+                  { id: 'acta', label: 'Acta Oficial (PDF)', file: actaFile, IconComponent: ScrollText, accept: '.pdf' }
                 ].map((item) => (
                   <div key={item.id} className={`bg-slate-900/30 border-2 border-dashed rounded-[2.5rem] p-10 text-center transition-all ${ item.file ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-slate-800 hover:border-slate-700'}`}>
                      <div className="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-8 bg-slate-800 border border-slate-700">
-                        {/* Fixed type error: casting to React.ReactElement<any> to allow className prop */}
-                        {React.cloneElement(item.icon as React.ReactElement<any>, { className: "w-10 h-10 " + (item.file ? "text-emerald-400" : "text-slate-600") })}
+                        {/* Renderiza el componente del icono directamente, pasando el className */}
+                        <item.IconComponent className={"w-10 h-10 " + (item.file ? "text-emerald-400" : "text-slate-600")} />
                      </div>
                      <h3 className="text-xl font-black mb-1 uppercase italic tracking-tighter">{item.label}</h3>
                      <p className="text-[10px] text-slate-500 font-black uppercase mb-8 truncate px-4">{item.file ? item.file.name : 'Archivo pendiente'}</p>
@@ -548,30 +406,34 @@ const App: React.FC = () => {
               <h3 className="text-3xl font-black uppercase italic mb-12 flex items-center gap-4">
                 <UserCheck className="w-8 h-8 text-emerald-500" /> Selección de Jugadores Clave
               </h3>
-              <p className="text-slate-400 mb-8 text-[11px] font-black uppercase tracking-wider text-center">
-                Selecciona los jugadores de tu equipo que deseas para un análisis de scouting personalizado.
-              </p>
-
-              <div className="text-center mb-8">
-                <span className="inline-flex items-center gap-2 bg-emerald-500/10 text-emerald-400 px-5 py-2 rounded-xl text-sm font-black uppercase border border-emerald-500/20">
-                  <User className="w-4 h-4" /> {selectedPlayers.length} jugadores seleccionados
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 custom-scrollbar max-h-[50vh] overflow-y-auto pr-2">
-                {uniqueAllAvailablePlayers.length > 0 ? (
-                  uniqueAllAvailablePlayers.map(player => (
-                    renderPlayerCard(
-                      player,
-                      selectedPlayers.some(p => p.dorsal === player.dorsal && p.name === player.name),
-                      handlePlayerSelection
-                    )
-                  ))
-                ) : (
-                  <div className="col-span-full py-12 text-center text-slate-500 text-sm italic">
-                    No se encontró la alineación ni los suplentes del equipo {targetTeam === 'local' ? initialMatchData.teamA.name : initialMatchData.teamB.name}.
+              
+              <div className="grid grid-cols-1 gap-12"> {/* Reverted to single column */}
+                  {/* Sección para Jugadores Clave (Análisis Individual) */}
+                  <div>
+                      <p className="text-slate-400 mb-8 text-[11px] font-black uppercase tracking-wider text-center">
+                        Selecciona los jugadores de tu equipo que deseas para un análisis de scouting personalizado.
+                      </p>
+                      <div className="text-center mb-8">
+                        <span className="inline-flex items-center gap-2 bg-emerald-500/10 text-emerald-400 px-5 py-2 rounded-xl text-sm font-black uppercase border border-emerald-500/20">
+                          <User className="w-4 h-4" /> {selectedPlayers.length} jugadores seleccionados
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 custom-scrollbar max-h-[50vh] overflow-y-auto pr-2"> {/* Adjusted grid */}
+                        {uniqueAllAvailablePlayers.length > 0 ? (
+                          uniqueAllAvailablePlayers.map(player => (
+                            renderPlayerCard(
+                              player,
+                              selectedPlayers.some(p => p.dorsal === player.dorsal && p.name === player.name),
+                              handlePlayerSelection
+                            )
+                          ))
+                        ) : (
+                          <div className="col-span-full py-12 text-center text-slate-500 text-sm italic">
+                            No se encontró la alineación ni los suplentes del equipo {targetTeam === 'local' ? initialMatchData.teamA.name : initialMatchData.teamB.name}.
+                          </div>
+                        )}
+                      </div>
                   </div>
-                )}
               </div>
 
               <div className="mt-16 text-center">
@@ -695,7 +557,7 @@ const App: React.FC = () => {
                          <h5 className="font-black uppercase tracking-widest text-xs italic">Balón Parado</h5>
                       </div>
                       <p className="text-[12px] text-slate-400 leading-relaxed italic">{analysis.technicalReport.setPieces.description}</p>
-                      {analysis.technicalReport.setPieces.keyAspects && analysis.technicalReport.setPieces.keyAspects.length > 0 && (
+                      {analysis.technicalReport.setPieces.keyAspects && analysis.technicalReport.setPieces.length > 0 && (
                           <ul className="list-disc list-inside text-[11px] text-slate-500 space-y-1 pl-4 border-l border-slate-800 py-1">
                               {analysis.technicalReport.setPieces.keyAspects.map((aspect, idx) => (
                                   <li key={idx}>{aspect}</li>
@@ -749,6 +611,36 @@ const App: React.FC = () => {
                                <p className="text-[11px] text-slate-400 leading-relaxed italic border-l-2 border-slate-800 pl-4 py-1 flex-1">
                                  "{p.individualAnalysis}"
                                </p>
+                               {/* Puntos de Mejora */}
+                               {p.improvementFeedback && (
+                                  <div className="mt-4 pt-4 border-t border-slate-800 space-y-2 text-left">
+                                      <h6 className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-2"><Sparkles className="w-3 h-3 text-emerald-400"/> Mejora de Rendimiento</h6>
+                                      {p.improvementFeedback.strengths.length > 0 && (
+                                        <div>
+                                          <p className="text-[10px] font-bold text-emerald-300 flex items-center gap-1"><BadgeCent className="w-3 h-3"/> Fortalezas:</p>
+                                          <ul className="list-disc list-inside text-[10px] text-slate-400 pl-3">
+                                            {p.improvementFeedback.strengths.map((item, idx) => <li key={idx}>{item}</li>)}
+                                          </ul>
+                                        </div>
+                                      )}
+                                      {p.improvementFeedback.weaknesses.length > 0 && (
+                                        <div>
+                                          <p className="text-[10px] font-bold text-red-300 flex items-center gap-1"><CircleX className="w-3 h-3"/> Debilidades:</p>
+                                          <ul className="list-disc list-inside text-[10px] text-slate-400 pl-3">
+                                            {p.improvementFeedback.weaknesses.map((item, idx) => <li key={idx}>{item}</li>)}
+                                          </ul>
+                                        </div>
+                                      )}
+                                      {p.improvementFeedback.improvementAdvice.length > 0 && (
+                                        <div>
+                                          <p className="text-[10px] font-bold text-amber-300 flex items-center gap-1"><Lightbulb className="w-3 h-3"/> Consejos:</p>
+                                          <ul className="list-disc list-inside text-[10px] text-slate-400 pl-3">
+                                            {p.improvementFeedback.improvementAdvice.map((item, idx) => <li key={idx}>{item}</li>)}
+                                          </ul>
+                                        </div>
+                                      )}
+                                  </div>
+                               )}
                              </div>
                          ))}
                          {analysis.keyPerformers.filter(p => p.zone === 'defensiva').length === 0 && (
@@ -761,7 +653,7 @@ const App: React.FC = () => {
                    <div>
                       <div className="flex items-center gap-3 mb-8 border-b border-slate-800 pb-4">
                          <ArrowRightLeft className="w-5 h-5 text-amber-500" />
-                         <h5 className="text-[11px] font-black uppercase tracking-[0.3em] text-amber-500">Zona Media (Sala de Máquinas)</h5>
+                         <h5 className="text-[11px] font-black uppercase tracking-[0.3em] text-amber-500">Zona de Construcción (Bloque de Construcción)</h5>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                          {analysis.keyPerformers.filter(p => p.zone === 'media').map(p => (
@@ -778,6 +670,36 @@ const App: React.FC = () => {
                                <p className="text-[11px] text-slate-400 leading-relaxed italic border-l-2 border-slate-800 pl-4 py-1 flex-1">
                                  "{p.individualAnalysis}"
                                </p>
+                               {/* Puntos de Mejora */}
+                               {p.improvementFeedback && (
+                                  <div className="mt-4 pt-4 border-t border-slate-800 space-y-2 text-left">
+                                      <h6 className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-2"><Sparkles className="w-3 h-3 text-emerald-400"/> Mejora de Rendimiento</h6>
+                                      {p.improvementFeedback.strengths.length > 0 && (
+                                        <div>
+                                          <p className="text-[10px] font-bold text-emerald-300 flex items-center gap-1"><BadgeCent className="w-3 h-3"/> Fortalezas:</p>
+                                          <ul className="list-disc list-inside text-[10px] text-slate-400 pl-3">
+                                            {p.improvementFeedback.strengths.map((item, idx) => <li key={idx}>{item}</li>)}
+                                          </ul>
+                                        </div>
+                                      )}
+                                      {p.improvementFeedback.weaknesses.length > 0 && (
+                                        <div>
+                                          <p className="text-[10px] font-bold text-red-300 flex items-center gap-1"><CircleX className="w-3 h-3"/> Debilidades:</p>
+                                          <ul className="list-disc list-inside text-[10px] text-slate-400 pl-3">
+                                            {p.improvementFeedback.weaknesses.map((item, idx) => <li key={idx}>{item}</li>)}
+                                          </ul>
+                                        </div>
+                                      )}
+                                      {p.improvementFeedback.improvementAdvice.length > 0 && (
+                                        <div>
+                                          <p className="text-[10px] font-bold text-amber-300 flex items-center gap-1"><Lightbulb className="w-3 h-3"/> Consejos:</p>
+                                          <ul className="list-disc list-inside text-[10px] text-slate-400 pl-3">
+                                            {p.improvementFeedback.improvementAdvice.map((item, idx) => <li key={idx}>{item}</li>)}
+                                          </ul>
+                                        </div>
+                                      )}
+                                  </div>
+                               )}
                              </div>
                          ))}
                          {analysis.keyPerformers.filter(p => p.zone === 'media').length === 0 && (
@@ -790,7 +712,7 @@ const App: React.FC = () => {
                    <div>
                       <div className="flex items-center gap-3 mb-8 border-b border-slate-800 pb-4">
                          <Sword className="w-5 h-5 text-rose-500" />
-                         <h5 className="text-[11px] font-black uppercase tracking-[0.3em] text-rose-500">Zona Ofensiva (Frontal)</h5>
+                         <h5 className="text-[11px] font-black uppercase tracking-[0.3em] text-rose-500">Zona Ofensiva (Bloque Ofensivo)</h5>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                          {analysis.keyPerformers.filter(p => p.zone === 'ofensiva').map(p => (
@@ -807,6 +729,36 @@ const App: React.FC = () => {
                                <p className="text-[11px] text-slate-400 leading-relaxed italic border-l-2 border-slate-800 pl-4 py-1 flex-1">
                                  "{p.individualAnalysis}"
                                </p>
+                               {/* Puntos de Mejora */}
+                               {p.improvementFeedback && (
+                                  <div className="mt-4 pt-4 border-t border-slate-800 space-y-2 text-left">
+                                      <h6 className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-2"><Sparkles className="w-3 h-3 text-emerald-400"/> Mejora de Rendimiento</h6>
+                                      {p.improvementFeedback.strengths.length > 0 && (
+                                        <div>
+                                          <p className="text-[10px] font-bold text-emerald-300 flex items-center gap-1"><BadgeCent className="w-3 h-3"/> Fortalezas:</p>
+                                          <ul className="list-disc list-inside text-[10px] text-slate-400 pl-3">
+                                            {p.improvementFeedback.strengths.map((item, idx) => <li key={idx}>{item}</li>)}
+                                          </ul>
+                                        </div>
+                                      )}
+                                      {p.improvementFeedback.weaknesses.length > 0 && (
+                                        <div>
+                                          <p className="text-[10px] font-bold text-red-300 flex items-center gap-1"><CircleX className="w-3 h-3"/> Debilidades:</p>
+                                          <ul className="list-disc list-inside text-[10px] text-slate-400 pl-3">
+                                            {p.improvementFeedback.weaknesses.map((item, idx) => <li key={idx}>{item}</li>)}
+                                          </ul>
+                                        </div>
+                                      )}
+                                      {p.improvementFeedback.improvementAdvice.length > 0 && (
+                                        <div>
+                                          <p className="text-[10px] font-bold text-amber-300 flex items-center gap-1"><Lightbulb className="w-3 h-3"/> Consejos:</p>
+                                          <ul className="list-disc list-inside text-[10px] text-slate-400 pl-3">
+                                            {p.improvementFeedback.improvementAdvice.map((item, idx) => <li key={idx}>{item}</li>)}
+                                          </ul>
+                                        </div>
+                                      )}
+                                  </div>
+                               )}
                              </div>
                          ))}
                          {analysis.keyPerformers.filter(p => p.zone === 'ofensiva').length === 0 && (
@@ -816,6 +768,7 @@ const App: React.FC = () => {
                    </div>
                 </div>
             </div>
+
 
             {/* Estadísticas de Juego */}
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
@@ -846,9 +799,7 @@ const App: React.FC = () => {
                 <button onClick={() => window.location.reload()} className="bg-slate-900 hover:bg-slate-800 text-slate-400 font-black py-5 px-16 rounded-[2rem] border border-slate-800 uppercase text-xs tracking-[0.3em] transition-all active:scale-95">
                   Nuevo Análisis
                 </button>
-                <button onClick={exportToPDF} className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-5 px-16 rounded-[2rem] uppercase text-xs tracking-[0.3em] transition-all shadow-2xl shadow-emerald-500/30 flex items-center gap-3 active:scale-95">
-                  <Download className="w-5 h-5" /> Descargar Dossier PDF
-                </button>
+                {/* Botón de descargar dossier PDF eliminado */}
             </div>
           </div>
         )}
