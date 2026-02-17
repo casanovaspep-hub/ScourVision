@@ -1,5 +1,4 @@
 
-
 export interface Player {
   name: string;
   dorsal: number;
@@ -87,7 +86,81 @@ export interface InitialMatchData {
   };
 }
 
+// Nueva interfaz para métricas de rendimiento de jugadores
+export interface PlayerPerformanceMetrics {
+  // Métricas comunes (aplicables a varias posiciones, pero se solicitarán por zona para mayor precisión)
+  goals?: number;
+  shots?: number;
+  shotsOnTarget?: number;
+  passesCompleted?: number; // pases realizados
+  assists?: number;
+  freeKicks?: number; // tiros libres
+
+  // Métricas de Duelos (comunes a defensiva, construcción, ofensiva)
+  duelsAerialWonPercentage?: string; // Ej: "65%"
+  duelsGroundWonPercentage?: string; // Ej: "70%"
+
+  // Métricas específicas de Portero
+  savesCount?: number;
+  saveEfficiency?: string; // Ej: "75% (PSxG - GA: +0.5)"
+  passAccuracyLongPercentage?: string; // Ej: "70%"
+  passAccuracyShortPercentage?: string; // Ej: "90%"
+  passesUnderPressureGoalkeeper?: string; // Ej: "8/10 completados"
+  aerialExitsSuccessful?: number;
+  sweeperKeeperActions?: number; // Intervenciones fuera del área
+
+  // Métricas específicas de Defensa
+  interceptions?: number;
+  clearances?: number;
+  blocks?: number;
+  passesToFinalThird?: number;
+  progressiveCarries?: number;
+  ballRecoveriesDefense?: number; // Recuperaciones de balón en bloque defensivo
+  passAccuracyDefensePercentage?: string; // % de acierto en pases en zona defensiva
+  passesUnderPressureDefense?: string; // Pases completados bajo presión en zona defensiva
+
+  // Métricas específicas de Mediocampista (Construcción)
+  touchesPerGame?: number;
+  passAccuracyMidfieldPercentage?: string; // Precisión de pase general en zona de construcción
+  ballLossesOwnHalf?: number;
+  passesUnderPressureMidfield?: string; // Pases completados bajo acoso en zona de construcción
+  throughBalls?: number;
+  changesOfPlay?: number;
+
+  // Métricas específicas de Delantero (Ofensiva)
+  expectedGoals?: string; // Ej: "0.75 xG"
+  expectedAssists?: string; // Ej: "0.3 xA"
+  dribblesCompletedPercentage?: string; // Ej: "60%"
+  foulsSufferedDangerZone?: number;
+  goalsPer90?: string; // Ej: "0.5 G/90"
+  shotsOnTargetToGoalRatio?: string; // Ej: "30% (3/10)"
+  interceptionsFinalThird?: number;
+  recoveriesAfterLoss?: number; // Recuperaciones tras pérdida (general para ofensiva)
+  successfulTacklesOffensive?: number; // Tackleadas exitosas en ofensiva
+  passAccuracyOffensivePercentage?: string; // % de acierto en pases en zona ofensiva
+  passesUnderPressureOffensive?: string; // Pases completados bajo presión en zona ofensiva
+}
+
+export interface PlayerImprovementFeedback {
+  strengths: string[];
+  weaknesses: string[];
+  improvementAdvice: string[];
+}
+
+// Nueva interfaz para el informe de un jugador individual (respuesta de la IA)
+export interface IndividualPlayerReport {
+  player: string;
+  team: string; // The team of this player
+  dorsal: number;
+  individualAnalysis: string;
+  zone: 'portero' | 'defensiva' | 'media' | 'ofensiva';
+  improvementFeedback: PlayerImprovementFeedback;
+  performanceMetrics: PlayerPerformanceMetrics;
+}
+
 export interface MatchAnalysis {
+  id: string; // Añadido para guardar análisis
+  timestamp: number; // Añadido para guardar análisis
   teamA: {
     name: string;
     color?: string;
@@ -114,20 +187,8 @@ export interface MatchAnalysis {
   tacticalShifts?: TacticalShift[];
   technicalReport: TechnicalReport;
   tacticalSummary: string;
-  keyPerformers: {
-    player: string;
-    team: string;
-    impact?: string;
-    dorsal: number;
-    individualAnalysis?: string;
-    zone: 'ofensiva' | 'media' | 'defensiva';
-    improvementFeedback?: { // Nuevo: feedback de mejora para el jugador
-      strengths: string[];
-      weaknesses: string[];
-      improvementAdvice: string[];
-    };
-  }[];
+  keyPerformers: IndividualPlayerReport[]; // Ahora usa la interfaz de reporte individual
   targetTeamSide: 'local' | 'visitante';
 }
 
-export type AppStage = 'upload' | 'selection' | 'playerSelection' | 'analyzing' | 'report';
+export type AppStage = 'upload' | 'selection' | 'playerSelection' | 'analyzing' | 'report' | 'savedAnalysesList';

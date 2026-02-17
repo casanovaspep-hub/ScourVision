@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { AppStage, MatchAnalysis, SelectedPlayerInfo, InitialMatchData, TechnicalPhase } from './types';
+import React, { useState, useEffect } from 'react';
+import { AppStage, MatchAnalysis, SelectedPlayerInfo, InitialMatchData, TechnicalPhase, PlayerPerformanceMetrics } from './types';
 import { analyzeFullMatch, getInitialMatchLineups } from './services/geminiService';
 import { 
   Trophy, 
@@ -28,13 +28,13 @@ import {
   Layout,
   Cpu,
   RefreshCw,
-  Target,
+  Target, 
   Sword,
   ShieldCheck,
   ZapIcon,
   Flag,
-  Crosshair,
-  Dribbble,
+  Crosshair, // Para intercepciones
+  Dribbble, 
   HandMetal,
   Hammer,
   FileCheck2,
@@ -44,7 +44,7 @@ import {
   Lightbulb,
   ArrowLeft,
   ArrowRight,
-  Shield,
+  Shield, 
   Notebook as NotebookIcon,
   ArrowUpRight,
   ArrowDownLeft,
@@ -57,12 +57,32 @@ import {
   Square,
   BadgeCent, 
   CircleX, 
-  Sparkles 
+  Sparkles,
+  Archive, 
+  Trash2, 
+  Goal, 
+  Footprints, 
+  Handshake, // Para asistencias
+  Split, // Para duelos
+  Share2, // Para pases al tercio final
+  MoveRight, // Para progressive carries
+  Maximize, // Para cambios de orientación/salidas por alto
+  Eye, // Para pases filtrados
+  Weight, // Para resistencia a presión / pases bajo presión
+  Gauge, // Para volumen de juego
+  ZapOff, // Para pérdidas de balón
+  Gavel, // Para faltas sufridas
+  TrendingDown, // Para goles prevenidos
+  Hand, // Para paradas
+  MoveHorizontal, // Para pases largos / cortos / movimientos
+  Focus, // Para dominio del área
+  CornerDownRight, // Para centros
+  RefreshCcw, // Para recuperaciones
+  Sigma, // Para xG/xA
+  Send, // Para despejes
+  StopCircle, // Para bloqueos
+  ShieldHalf // Nuevo icono para ballRecoveriesDefense
 } from 'lucide-react';
-// No es necesario importar jsPDF ni jspdf-autotable aquí, se cargan globalmente en index.html
-// import { jsPDF } from 'jspdf'; 
-// (window as any).jsPDF = jsPDF; // Workaround anterior, ya no necesario
-// import 'jspdf-autotable'; 
 
 const App: React.FC = () => {
   const [stage, setStage] = useState<AppStage>('upload');
@@ -81,12 +101,28 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Nuevo estado para los análisis guardados
+  const [savedAnalyses, setSavedAnalyses] = useState<MatchAnalysis[]>([]);
+
+  // Cargar análisis guardados de localStorage al montar el componente
+  useEffect(() => {
+    try {
+      const storedAnalyses = localStorage.getItem('scoutvision_saved_analyses');
+      if (storedAnalyses) {
+        setSavedAnalyses(JSON.parse(storedAnalyses));
+      }
+    } catch (e) {
+      console.error("Error loading saved analyses from localStorage:", e);
+      // Opcional: mostrar un mensaje al usuario si hay un error crítico
+    }
+  }, []); // El array vacío asegura que se ejecute solo una vez al montar
+
   const handleFileUpload = (type: 'v1' | 'v2' | 'acta') => (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       if (type === 'v1') setVideoFile1(file);
       else if (type === 'v2') setVideoFile2(file);
-      else setActaFile(file);
+      else if (type === 'acta') setActaFile(file);
     }
   };
 
@@ -145,6 +181,22 @@ const App: React.FC = () => {
     }
   };
 
+  // Fix: Defined `handlePlayerSelection` function
+  const handlePlayerSelection = (player: SelectedPlayerInfo) => {
+    setSelectedPlayers(prevSelectedPlayers => {
+      const isSelected = prevSelectedPlayers.some(
+        p => p.dorsal === player.dorsal && p.name === player.name
+      );
+      if (isSelected) {
+        return prevSelectedPlayers.filter(
+          p => !(p.dorsal === player.dorsal && p.name === player.name)
+        );
+      } else {
+        return [...prevSelectedPlayers, player];
+      }
+    });
+  };
+
   const startFullAnalysis = async () => {
     setError(null);
     setLoading(true);
@@ -170,7 +222,16 @@ const App: React.FC = () => {
         actaPart: { mimeType: 'application/pdf', data: actaData }
       }, selectedPlayers); // Pass selected players to the analysis
 
-      setAnalysis(result);
+      // Generar un ID único y timestamp para el nuevo análisis
+      const newAnalysisId = crypto.randomUUID();
+      const newAnalysisWithMeta: MatchAnalysis = {
+        ...result,
+        id: newAnalysisId,
+        timestamp: Date.now(),
+      };
+
+      setAnalysis(newAnalysisWithMeta);
+      saveAnalysis(newAnalysisWithMeta); // Guardar el análisis recién generado
       setStage('report');
     } catch (err: any) {
       console.error("Error en startFullAnalysis:", err);
@@ -181,15 +242,70 @@ const App: React.FC = () => {
     }
   };
 
-  const handlePlayerSelection = (player: SelectedPlayerInfo) => {
-    setSelectedPlayers(prev => {
-      const isSelected = prev.some(p => p.dorsal === player.dorsal && p.name === player.name);
-      if (isSelected) {
-        return prev.filter(p => p.dorsal !== player.dorsal || p.name !== player.name);
-      } else {
-        return [...prev, player];
+  // Función para guardar un análisis en localStorage
+  const saveAnalysis = (analysisToSave: MatchAnalysis) => {
+    try {
+      setSavedAnalyses(prev => {
+        // Asegurarse de que el ID ya esté presente en analysisToSave
+        const updatedAnalyses = [...prev, analysisToSave];
+        localStorage.setItem('scoutvision_saved_analyses', JSON.stringify(updatedAnalyses));
+        return updatedAnalyses;
+      });
+      console.log("Análisis guardado con éxito:", analysisToSave.id);
+    } catch (e) {
+      console.error("Error saving analysis to localStorage:", e);
+      alert("Error al guardar el análisis. Intenta de nuevo.");
+    }
+  };
+
+  // Función para cargar un análisis guardado
+  const loadSavedAnalysis = (analysisId: string) => {
+    const selected = savedAnalyses.find(a => a.id === analysisId);
+    if (selected) {
+      setAnalysis(selected);
+      setStage('report');
+      setError(null); // Limpiar cualquier error previo
+    } else {
+      setError("Análisis no encontrado.");
+    }
+  };
+
+  // Función para eliminar un análisis guardado
+  const deleteSavedAnalysis = (analysisId: string) => {
+    if (window.confirm("¿Estás seguro de que quieres eliminar este análisis?")) {
+      try {
+        setSavedAnalyses(prev => {
+          const updatedAnalyses = prev.filter(a => a.id !== analysisId);
+          localStorage.setItem('scoutvision_saved_analyses', JSON.stringify(updatedAnalyses));
+          return updatedAnalyses;
+        });
+        // Si el análisis actualmente visto es eliminado, volver a la etapa de carga
+        if (analysis && analysis.id === analysisId) {
+          setAnalysis(null);
+          setStage('upload');
+        }
+        console.log("Análisis eliminado con éxito:", analysisId);
+      } catch (e) {
+        console.error("Error deleting analysis from localStorage:", e);
+        alert("Error al eliminar el análisis. Intenta de nuevo.");
       }
-    });
+    }
+  };
+
+  // Función para reiniciar la aplicación a su estado inicial
+  const resetApp = () => {
+    setVideoFile1(null);
+    setVideoFile2(null);
+    setActaFile(null);
+    setTargetTeam('local');
+    setSide1('izquierda');
+    setSide2('derecha');
+    setInitialMatchData(null);
+    setSelectedPlayers([]);
+    setAnalysis(null);
+    setLoading(false);
+    setError(null);
+    setStage('upload');
   };
 
   const statLabels: Record<string, string> = {
@@ -202,6 +318,65 @@ const App: React.FC = () => {
     passAccuracy: "Acierto Pases (%)",
     fouls: "Faltas",
     corners: "Córners"
+  };
+
+  // Helper function for metric display values
+  const getMetricDisplayValue = (key: keyof PlayerPerformanceMetrics, value: any): string | null => {
+    if (value === null || value === undefined) return null; // No mostrar si es null/undefined
+
+    switch (key) {
+      case 'goals':
+      case 'shots':
+      case 'shotsOnTarget':
+      case 'passesCompleted':
+      case 'assists':
+      case 'freeKicks':
+      case 'savesCount':
+      case 'aerialExitsSuccessful':
+      case 'sweeperKeeperActions':
+      case 'interceptions':
+      case 'clearances':
+      case 'blocks':
+      case 'passesToFinalThird':
+      case 'progressiveCarries':
+      case 'ballRecoveriesDefense':
+      case 'touchesPerGame':
+      case 'ballLossesOwnHalf':
+      case 'throughBalls':
+      case 'changesOfPlay':
+      case 'foulsSufferedDangerZone':
+      case 'interceptionsFinalThird':
+      case 'recoveriesAfterLoss':
+      case 'successfulTacklesOffensive':
+        return value === 0 ? null : String(value); // No mostrar si es 0
+      
+      case 'duelsAerialWonPercentage':
+      case 'duelsGroundWonPercentage':
+      case 'saveEfficiency':
+      case 'passAccuracyLongPercentage':
+      case 'passAccuracyShortPercentage':
+      case 'passesUnderPressureGoalkeeper':
+      case 'passAccuracyDefensePercentage':
+      case 'passesUnderPressureDefense':
+      case 'passAccuracyMidfieldPercentage':
+      case 'passesUnderPressureMidfield':
+      case 'expectedGoals':
+      case 'expectedAssists':
+      case 'dribblesCompletedPercentage':
+      case 'goalsPer90':
+      case 'shotsOnTargetToGoalRatio':
+      case 'passAccuracyOffensivePercentage':
+      case 'passesUnderPressureOffensive':
+        const stringValue = String(value);
+        // Considerar valores como '0', '0%', '0 xG', '0/0 completados' como nulos para no mostrar
+        if (stringValue === '0' || stringValue === '0%' || stringValue === '0 xG' || stringValue === '0 xA' || stringValue === '0 G/90' || stringValue.includes('0/0')) {
+            return null;
+        }
+        return stringValue;
+        
+      default:
+        return String(value);
+    }
   };
 
   const renderStatRow = (label: string, key: string, suffix: string = '') => {
@@ -391,6 +566,7 @@ const App: React.FC = () => {
       console.log("exportToPDF: Iniciando sección de informe de rendimiento individual por zonas.");
       
       const zones = [
+        { id: 'portero', label: 'Zona de Portería' },
         { id: 'defensiva', label: 'Zona Defensiva (Bloque Defensivo)' }, 
         { id: 'media', label: 'Zona de Construcción (Bloque de Construcción)' }, 
         { id: 'ofensiva', label: 'Zona Ofensiva (Bloque Ofensivo)' } 
@@ -399,44 +575,68 @@ const App: React.FC = () => {
       currentY = 30;
       const PAGE_BREAK_THRESHOLD_PLAYER = 255; 
 
+      // Mapa para etiquetas de métricas en PDF
+      const metricPdfLabels: Record<keyof PlayerPerformanceMetrics, string> = {
+          goals: "Goles",
+          shots: "Disparos",
+          shotsOnTarget: "Disparos a Puerta",
+          passesCompleted: "Pases Realizados",
+          assists: "Asistencias",
+          freeKicks: "Tiros Libres",
+          duelsAerialWonPercentage: "Duelos Aéreos Ganados",
+          duelsGroundWonPercentage: "Duelos Terrestres Ganados",
+          savesCount: "Paradas",
+          saveEfficiency: "Efectividad (PSxG-GA)",
+          passAccuracyLongPercentage: "Pases Largos",
+          passAccuracyShortPercentage: "Pases Cortos",
+          passesUnderPressureGoalkeeper: "Pases Bajo Presión",
+          aerialExitsSuccessful: "Salidas por Alto Exitosas",
+          sweeperKeeperActions: "Intervenciones \"Líbero\"",
+          interceptions: "Intercepciones",
+          clearances: "Despejes",
+          blocks: "Bloqueos",
+          passesToFinalThird: "Pases al Tercio Final",
+          progressiveCarries: "Conducciones Progresivas",
+          ballRecoveriesDefense: "Recuperaciones de Balón",
+          passAccuracyDefensePercentage: "Pases Precisos",
+          passesUnderPressureDefense: "Pases Bajo Presión",
+          touchesPerGame: "Toques por Partido",
+          passAccuracyMidfieldPercentage: "Pases Precisos",
+          ballLossesOwnHalf: "Pérdidas Campo Propio",
+          passesUnderPressureMidfield: "Pases Bajo Presión",
+          throughBalls: "Pases Filtrados",
+          changesOfPlay: "Cambios de Orientación",
+          expectedGoals: "Peligro Generado (xG)",
+          expectedAssists: "Peligro Generado (xA)",
+          dribblesCompletedPercentage: "Regates Completados",
+          foulsSufferedDangerZone: "Faltas Recibidas (Z. Peligro)",
+          goalsPer90: "Goles por 90 min",
+          shotsOnTargetToGoalRatio: "Ratio T.Puerta/Gol",
+          interceptionsFinalThird: "Intercepciones (Últ. Tercio)",
+          recoveriesAfterLoss: "Recuperaciones Tras Pérdida",
+          successfulTacklesOffensive: "Tackleadas Exitosas",
+          passAccuracyOffensivePercentage: "Pases Precisos",
+          passesUnderPressureOffensive: "Pases Bajo Presión",
+      };
+
       zones.forEach(zone => {
-        const players = analysis.keyPerformers?.filter(p => p.zone === zone.id) || []; // Ensure players array is not null
+        const players = analysis.keyPerformers?.filter(p => p.zone === zone.id) || []; 
+
         if (players.length > 0) {
-          // Calculate estimated height for the zone title + first player to decide on page break
-          let estimatedFirstPlayerBlockHeight = 0;
-          const p = players[0]; // Assume at least one player if players.length > 0
-          const individualAnalysisText = p.individualAnalysis || 'Análisis no disponible.';
-          const strengths = p.improvementFeedback?.strengths || [];
-          const weaknesses = p.improvementFeedback?.weaknesses || [];
-          const improvementAdvice = p.improvementFeedback?.improvementAdvice || [];
+          // Calculate estimated height for the zone title
+          const zoneTitleHeight = doc.getLineHeight(12) + 7; // 12pt font for title + 7mm spacing
 
-          estimatedFirstPlayerBlockHeight =
-              7 + // Space after zone title
-              15 + // Player Name and Dorsal + padding for title (11pt + 7pt margin)
-              (doc.splitTextToSize(`"${individualAnalysisText}"`, 180).length * doc.getLineHeight()) + 4 + // Individual analysis + margin
-              (p.improvementFeedback ? (
-                  4 + // MEJORA DE RENDIMIENTO title + margin
-                  (strengths.length > 0 ? (doc.getLineHeight() + (strengths.length * doc.getLineHeight()) + 3) : 0) + // Strengths section + margin
-                  (weaknesses.length > 0 ? (doc.getLineHeight() + (weaknesses.length * doc.getLineHeight()) + 3) : 0) + // Weaknesses section + margin
-                  (improvementAdvice.length > 0 ? (doc.getLineHeight() + (improvementAdvice.length * doc.getLineHeight())) : 0) // Advice section
-              ) : 0) +
-              8; // Space after player's full section
-
-          const zoneTitleLineHeight = doc.getLineHeight(12); // Line height for 12pt font
-          const zoneTitleSpacing = 7; // Space after zone title
-          const totalZoneHeaderAndFirstPlayerHeight = zoneTitleLineHeight + zoneTitleSpacing + estimatedFirstPlayerBlockHeight;
-
-          // If currentY for the zone title + first player block would push beyond the threshold
-          if (currentY + totalZoneHeaderAndFirstPlayerHeight > PAGE_BREAK_THRESHOLD_PLAYER) {
-            doc.addPage();
-            currentY = 20;
+          // If currentY for the zone title would push beyond the threshold
+          if (currentY + zoneTitleHeight > PAGE_BREAK_THRESHOLD_PLAYER) {
+              doc.addPage();
+              currentY = 20; // Reset Y for new page
           }
 
           doc.setFontSize(12);
           doc.setFont("helvetica", "bold");
           doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
           doc.text(zone.label, 10, currentY);
-          currentY += 7; // Espaciado reducido después del título de zona
+          currentY += 7; // Espaciado después del título de zona
           
           players.forEach(p => {
               const individualAnalysisText = p.individualAnalysis || 'Análisis no disponible.';
@@ -444,21 +644,75 @@ const App: React.FC = () => {
               const weaknesses = p.improvementFeedback?.weaknesses || [];
               const improvementAdvice = p.improvementFeedback?.improvementAdvice || [];
 
-              // Estimate height needed for this player's info (re-calculating for precision per player)
-              const playerInfoHeight = 
-                  7 + // Player Name and Dorsal + padding (11pt + 7pt margin)
-                  (doc.splitTextToSize(`"${individualAnalysisText}"`, 180).length * doc.getLineHeight()) + 4 + // Individual analysis + margin
-                  (p.improvementFeedback ? (
-                      4 + // MEJORA DE RENDIMIENTO title + margin
-                      (strengths.length > 0 ? (doc.getLineHeight() + (strengths.length * doc.getLineHeight()) + 3) : 0) + // Strengths section + margin
-                      (weaknesses.length > 0 ? (doc.getLineHeight() + (weaknesses.length * doc.getLineHeight()) + 3) : 0) + // Weaknesses section + margin
-                      (improvementAdvice.length > 0 ? (doc.getLineHeight() + (improvementAdvice.length * doc.getLineHeight())) : 0) // Advice section
-                  ) : 0) +
-                  8; // Space after player's full section
+              // --- ESTIMACIÓN PRECISA DE ALTURA PARA CADA JUGADOR ---
+              let playerInfoEstimatedHeight = 0;
 
-              if (currentY + playerInfoHeight > PAGE_BREAK_THRESHOLD_PLAYER) {
+              // Nombre y Dorsal del Jugador
+              playerInfoEstimatedHeight += doc.getLineHeight(11) + 7; // Altura del nombre + espaciado
+
+              // Análisis Individual
+              const individualAnalysisLines = doc.splitTextToSize(`"${individualAnalysisText}"`, 180);
+              playerInfoEstimatedHeight += individualAnalysisLines.length * doc.getLineHeight(9) + 4; // Altura de las líneas + espaciado
+
+              // Feedback de Mejora (si existe)
+              if (p.improvementFeedback && (strengths.length > 0 || weaknesses.length > 0 || improvementAdvice.length > 0)) {
+                  playerInfoEstimatedHeight += doc.getLineHeight(9) + 4; // Título "MEJORA DE RENDIMIENTO" + espaciado
+
+                  // Fortalezas
+                  if (strengths.length > 0) {
+                      playerInfoEstimatedHeight += doc.getLineHeight(9); // Título "Fortalezas:"
+                      strengths.forEach(s => {
+                          playerInfoEstimatedHeight += doc.splitTextToSize(`• ${s}`, 175).length * doc.getLineHeight(9);
+                      });
+                      playerInfoEstimatedHeight += 3; // Espaciado
+                  }
+
+                  // Debilidades
+                  if (weaknesses.length > 0) {
+                      playerInfoEstimatedHeight += doc.getLineHeight(9); // Título "Debilidades:"
+                      weaknesses.forEach(w => {
+                          playerInfoEstimatedHeight += doc.splitTextToSize(`• ${w}`, 175).length * doc.getLineHeight(9);
+                      });
+                      playerInfoEstimatedHeight += 3; // Espaciado
+                  }
+
+                  // Consejos
+                  if (improvementAdvice.length > 0) {
+                      playerInfoEstimatedHeight += doc.getLineHeight(9); // Título "Consejos:"
+                      improvementAdvice.forEach(a => {
+                          playerInfoEstimatedHeight += doc.splitTextToSize(`• ${a}`, 175).length * doc.getLineHeight(9);
+                      });
+                  }
+              }
+              playerInfoEstimatedHeight += 4; // Espaciado después del feedback de mejora
+
+              // Métricas de Rendimiento (si existen y se muestran)
+              if (p.performanceMetrics) {
+                  let displayedMetricsCount = 0;
+                  const metrics = p.performanceMetrics as PlayerPerformanceMetrics;
+                  for (const key in metrics) {
+                      if (Object.prototype.hasOwnProperty.call(metrics, key)) {
+                          const value = (metrics as any)[key as keyof PlayerPerformanceMetrics];
+                          if (getMetricDisplayValue(key as keyof PlayerPerformanceMetrics, value) !== null) {
+                              displayedMetricsCount++;
+                          }
+                      }
+                  }
+                  if (displayedMetricsCount > 0) { // Si hay métricas para mostrar
+                      playerInfoEstimatedHeight += doc.getLineHeight(10) + 4; // Título "Métricas de Rendimiento" + espaciado
+                      playerInfoEstimatedHeight += displayedMetricsCount * (doc.getLineHeight(9) + 2); // Cada métrica + espaciado
+                  }
+              }
+              playerInfoEstimatedHeight += 4; // Espaciado final después de la sección de métricas
+
+              playerInfoEstimatedHeight += 4; // Espaciado final después de un jugador completo
+
+              // --- FIN DE ESTIMACIÓN ---
+
+              // Si el jugador no cabe en la página actual, agregar nueva página
+              if (currentY + playerInfoEstimatedHeight > PAGE_BREAK_THRESHOLD_PLAYER) {
                   doc.addPage();
-                  currentY = 20; 
+                  currentY = 20; // Reset Y for new page
               }
 
               // Player Name and Dorsal
@@ -472,12 +726,11 @@ const App: React.FC = () => {
               doc.setFontSize(9);
               doc.setFont("helvetica", "normal"); 
               doc.setTextColor(greyTextColor[0], greyTextColor[1], greyTextColor[2]);
-              const individualAnalysisLines = doc.splitTextToSize(`"${individualAnalysisText}"`, 180);
               doc.text(individualAnalysisLines, 10, currentY);
               currentY += (individualAnalysisLines.length * doc.getLineHeight()) + 4; // Espaciado reducido
 
               // Improvement Feedback
-              if (p.improvementFeedback) {
+              if (p.improvementFeedback && (strengths.length > 0 || weaknesses.length > 0 || improvementAdvice.length > 0)) {
                   doc.setFontSize(9);
                   doc.setFont("helvetica", "bold");
                   doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
@@ -534,7 +787,50 @@ const App: React.FC = () => {
                       });
                   }
               }
-              currentY += 8; // Espaciado reducido después de un jugador completo
+              currentY += 4; // Espaciado después del feedback de mejora
+
+              // Métricas de Rendimiento
+              if (p.performanceMetrics) {
+                  let hasDisplayedMetrics = false;
+                  // Comprobar si hay al menos una métrica para mostrar
+                  for (const key in p.performanceMetrics) {
+                      if (Object.prototype.hasOwnProperty.call(p.performanceMetrics, key)) {
+                          const value = (p.performanceMetrics as any)[key as keyof PlayerPerformanceMetrics];
+                          if (getMetricDisplayValue(key as keyof PlayerPerformanceMetrics, value) !== null) {
+                              hasDisplayedMetrics = true;
+                              break;
+                          }
+                      }
+                  }
+
+                  if (hasDisplayedMetrics) {
+                    doc.setFontSize(10);
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+                    doc.text('MÉTRICAS DE RENDIMIENTO', 10, currentY);
+                    currentY += 4; // Espaciado
+                    doc.setFontSize(9); // Tamaño de fuente para las métricas
+                    doc.setFont("helvetica", "normal");
+                    doc.setTextColor(greyTextColor[0], greyTextColor[1], greyTextColor[2]);
+                    
+                    for (const key in p.performanceMetrics) {
+                        if (Object.prototype.hasOwnProperty.call(p.performanceMetrics, key)) {
+                            const value = (p.performanceMetrics as any)[key as keyof PlayerPerformanceMetrics];
+                            const displayValue = getMetricDisplayValue(key as keyof PlayerPerformanceMetrics, value);
+                            
+                            if (displayValue !== null) {
+                                const label = metricPdfLabels[key as keyof PlayerPerformanceMetrics];
+                                if (label) {
+                                    doc.text(`• ${label}: ${displayValue}`, 15, currentY);
+                                    currentY += doc.getLineHeight(9) + 2; // Espaciado entre métricas
+                                }
+                            }
+                        }
+                    }
+                    currentY += 4; // Espaciado final de la sección de métricas
+                  }
+              }
+              currentY += 4; // Espaciado final después de un jugador completo
           });
         } else {
           doc.setFontSize(10);
@@ -664,6 +960,15 @@ const App: React.FC = () => {
                   Continuar a Táctica
                 </button>
              </div>
+             {/* Botón para ver análisis guardados */}
+             <div className="mt-8 text-center">
+                <button
+                  onClick={() => setStage('savedAnalysesList')}
+                  className="text-emerald-500 hover:text-emerald-400 font-bold text-sm uppercase tracking-wider flex items-center gap-2 mx-auto"
+                >
+                  <Archive className="w-4 h-4" /> Ver Análisis Guardados ({savedAnalyses.length})
+                </button>
+              </div>
           </div>
         )}
 
@@ -935,6 +1240,79 @@ const App: React.FC = () => {
                 </div>
 
                 <div className="space-y-16">
+                   {/* Zona de Portería */}
+                   <div>
+                      <div className="flex items-center gap-3 mb-8 border-b border-slate-800 pb-4">
+                         <ShieldQuestion className="w-5 h-5 text-lime-400" />
+                         <h5 className="text-[11px] font-black uppercase tracking-[0.3em] text-lime-400">Zona de Portería</h5>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                         {(analysis.keyPerformers || []).filter(p => p.zone === 'portero').map(p => (
+                            <div key={`${p.dorsal}-${p.player}`} className="bg-slate-950/50 p-6 rounded-[2rem] border border-slate-800 relative group hover:border-emerald-500/40 transition-all flex flex-col shadow-lg">
+                               <div className="flex items-center justify-between mb-4">
+                                 <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-emerald-500 font-black text-lg border border-slate-800 shadow-inner">
+                                   #{p.dorsal}
+                                 </div>
+                                 <div className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-tighter bg-lime-400/10 text-lime-400 border border-lime-400/20`}>
+                                   {p.zone}
+                                 </div>
+                               </div>
+                               <h5 className="text-sm font-black uppercase italic tracking-tighter text-slate-100 mb-3">{p.player}</h5>
+                               <p className="text-[11px] text-slate-400 leading-relaxed italic border-l-2 border-slate-800 pl-4 py-1 flex-1">
+                                 "{p.individualAnalysis}"
+                               </p>
+                               {/* Métricas de Rendimiento */}
+                               {p.performanceMetrics && (
+                                  <div className="mt-4 pt-4 border-t border-slate-800 space-y-2 text-left">
+                                      <h6 className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-2"><Activity className="w-3 h-3 text-emerald-400"/> Métricas de Rendimiento</h6>
+                                      {getMetricDisplayValue('goals', p.performanceMetrics.goals) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Goal className="w-3 h-3 text-rose-400"/> Goles: {p.performanceMetrics.goals}</div>}
+                                      {getMetricDisplayValue('savesCount', p.performanceMetrics.savesCount) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Hand className="w-3 h-3 text-teal-400"/> Paradas: {p.performanceMetrics.savesCount}</div>}
+                                      {getMetricDisplayValue('saveEfficiency', p.performanceMetrics.saveEfficiency) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><TrendingDown className="w-3 h-3 text-red-400"/> Efectividad (PSxG-GA): {p.performanceMetrics.saveEfficiency}</div>}
+                                      {getMetricDisplayValue('passAccuracyLongPercentage', p.performanceMetrics.passAccuracyLongPercentage) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><MoveHorizontal className="w-3 h-3 text-blue-400"/> Pases Largos: {p.performanceMetrics.passAccuracyLongPercentage}</div>}
+                                      {getMetricDisplayValue('passAccuracyShortPercentage', p.performanceMetrics.passAccuracyShortPercentage) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Footprints className="w-3 h-3 text-green-400"/> Pases Cortos: {p.performanceMetrics.passAccuracyShortPercentage}</div>}
+                                      {getMetricDisplayValue('passesUnderPressureGoalkeeper', p.performanceMetrics.passesUnderPressureGoalkeeper) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Weight className="w-3 h-3 text-purple-400"/> Pases Bajo Presión: {p.performanceMetrics.passesUnderPressureGoalkeeper}</div>}
+                                      {getMetricDisplayValue('aerialExitsSuccessful', p.performanceMetrics.aerialExitsSuccessful) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Maximize className="w-3 h-3 text-orange-400"/> Salidas por Alto Exitosas: {p.performanceMetrics.aerialExitsSuccessful}</div>}
+                                      {getMetricDisplayValue('sweeperKeeperActions', p.performanceMetrics.sweeperKeeperActions) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Film className="w-3 h-3 text-yellow-400"/> Intervenciones "Líbero": {p.performanceMetrics.sweeperKeeperActions}</div>}
+                                  </div>
+                               )}
+                               {/* Puntos de Mejora */}
+                               {p.improvementFeedback && (
+                                  <div className="mt-4 pt-4 border-t border-slate-800 space-y-2 text-left">
+                                      <h6 className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-2"><Sparkles className="w-3 h-3 text-emerald-400"/> Mejora de Rendimiento</h6>
+                                      {(p.improvementFeedback.strengths || []).length > 0 && (
+                                        <div>
+                                          <p className="text-[10px] font-bold text-emerald-300 flex items-center gap-1"><BadgeCent className="w-3 h-3"/> Fortalezas:</p>
+                                          <ul className="list-disc list-inside text-[10px] text-slate-400 pl-3">
+                                            {(p.improvementFeedback.strengths || []).map((item, idx) => <li key={idx}>{item}</li>)}
+                                          </ul>
+                                        </div>
+                                      )}
+                                      {(p.improvementFeedback.weaknesses || []).length > 0 && (
+                                        <div>
+                                          <p className="text-[10px] font-bold text-red-300 flex items-center gap-1"><CircleX className="w-3 h-3"/> Debilidades:</p>
+                                          <ul className="list-disc list-inside text-[10px] text-slate-400 pl-3">
+                                            {(p.improvementFeedback.weaknesses || []).map((item, idx) => <li key={idx}>{item}</li>)}
+                                          </ul>
+                                        </div>
+                                      )}
+                                      {(p.improvementFeedback.improvementAdvice || []).length > 0 && (
+                                        <div>
+                                          <p className="text-[10px] font-bold text-amber-300 flex items-center gap-1"><Lightbulb className="w-3 h-3"/> Consejos:</p>
+                                          <ul className="list-disc list-inside text-[10px] text-slate-400 pl-3">
+                                            {(p.improvementFeedback.improvementAdvice || []).map((item, idx) => <li key={idx}>{item}</li>)}
+                                          </ul>
+                                        </div>
+                                      )}
+                                  </div>
+                               )}
+                             </div>
+                         ))}
+                         {(analysis.keyPerformers || []).filter(p => p.zone === 'portero').length === 0 && (
+                           <div className="col-span-full py-8 text-center bg-slate-900/40 rounded-3xl border border-slate-800/50 italic text-slate-600 text-[10px] uppercase font-bold tracking-widest">Sin registros destacados en esta zona</div>
+                         )}
+                      </div>
+                   </div>
+
                    {/* Zona Defensiva */}
                    <div>
                       <div className="flex items-center gap-3 mb-8 border-b border-slate-800 pb-4">
@@ -956,6 +1334,28 @@ const App: React.FC = () => {
                                <p className="text-[11px] text-slate-400 leading-relaxed italic border-l-2 border-slate-800 pl-4 py-1 flex-1">
                                  "{p.individualAnalysis}"
                                </p>
+                               {/* Métricas de Rendimiento */}
+                               {p.performanceMetrics && (
+                                  <div className="mt-4 pt-4 border-t border-slate-800 space-y-2 text-left">
+                                      <h6 className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-2"><Activity className="w-3 h-3 text-emerald-400"/> Métricas de Rendimiento</h6>
+                                      {getMetricDisplayValue('goals', p.performanceMetrics.goals) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Goal className="w-3 h-3 text-rose-400"/> Goles: {p.performanceMetrics.goals}</div>}
+                                      {getMetricDisplayValue('shots', p.performanceMetrics.shots) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Dribbble className="w-3 h-3 text-amber-400"/> Disparos: {p.performanceMetrics.shots}</div>}
+                                      {getMetricDisplayValue('shotsOnTarget', p.performanceMetrics.shotsOnTarget) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Target className="w-3 h-3 text-green-400"/> Disparos a Puerta: {p.performanceMetrics.shotsOnTarget}</div>}
+                                      {getMetricDisplayValue('passesCompleted', p.performanceMetrics.passesCompleted) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Footprints className="w-3 h-3 text-blue-400"/> Pases Realizados: {p.performanceMetrics.passesCompleted}</div>}
+                                      {getMetricDisplayValue('assists', p.performanceMetrics.assists) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Handshake className="w-3 h-3 text-purple-400"/> Asistencias: {p.performanceMetrics.assists}</div>}
+                                      {getMetricDisplayValue('freeKicks', p.performanceMetrics.freeKicks) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Flag className="w-3 h-3 text-cyan-400"/> Tiros Libres: {p.performanceMetrics.freeKicks}</div>}
+                                      {getMetricDisplayValue('duelsAerialWonPercentage', p.performanceMetrics.duelsAerialWonPercentage) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Split className="w-3 h-3 text-yellow-400"/> Duelos Aéreos Ganados: {p.performanceMetrics.duelsAerialWonPercentage}</div>}
+                                      {getMetricDisplayValue('duelsGroundWonPercentage', p.performanceMetrics.duelsGroundWonPercentage) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Split className="w-3 h-3 text-orange-400"/> Duelos Terrestres Ganados: {p.performanceMetrics.duelsGroundWonPercentage}</div>}
+                                      {getMetricDisplayValue('interceptions', p.performanceMetrics.interceptions) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Crosshair className="w-3 h-3 text-teal-400"/> Intercepciones: {p.performanceMetrics.interceptions}</div>}
+                                      {getMetricDisplayValue('ballRecoveriesDefense', p.performanceMetrics.ballRecoveriesDefense) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><RefreshCcw className="w-3 h-3 text-gray-400"/> Recuperaciones de Balón: {p.performanceMetrics.ballRecoveriesDefense}</div>}
+                                      {getMetricDisplayValue('passAccuracyDefensePercentage', p.performanceMetrics.passAccuracyDefensePercentage) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Footprints className="w-3 h-3 text-blue-400"/> Pases Precisos: {p.performanceMetrics.passAccuracyDefensePercentage}</div>}
+                                      {getMetricDisplayValue('passesUnderPressureDefense', p.performanceMetrics.passesUnderPressureDefense) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Weight className="w-3 h-3 text-purple-400"/> Pases Bajo Presión: {p.performanceMetrics.passesUnderPressureDefense}</div>}
+                                      {getMetricDisplayValue('clearances', p.performanceMetrics.clearances) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Send className="w-3 h-3 text-emerald-400"/> Despejes: {p.performanceMetrics.clearances}</div>}
+                                      {getMetricDisplayValue('blocks', p.performanceMetrics.blocks) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><StopCircle className="w-3 h-3 text-lime-400"/> Bloqueos: {p.performanceMetrics.blocks}</div>}
+                                      {getMetricDisplayValue('passesToFinalThird', p.performanceMetrics.passesToFinalThird) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Share2 className="w-3 h-3 text-sky-400"/> Pases al Tercio Final: {p.performanceMetrics.passesToFinalThird}</div>}
+                                      {getMetricDisplayValue('progressiveCarries', p.performanceMetrics.progressiveCarries) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><MoveRight className="w-3 h-3 text-indigo-400"/> Conducciones Progresivas: {p.performanceMetrics.progressiveCarries}</div>}
+                                  </div>
+                               )}
                                {/* Puntos de Mejora */}
                                {p.improvementFeedback && (
                                   <div className="mt-4 pt-4 border-t border-slate-800 space-y-2 text-left">
@@ -1015,6 +1415,26 @@ const App: React.FC = () => {
                                <p className="text-[11px] text-slate-400 leading-relaxed italic border-l-2 border-slate-800 pl-4 py-1 flex-1">
                                  "{p.individualAnalysis}"
                                </p>
+                               {/* Métricas de Rendimiento */}
+                               {p.performanceMetrics && (
+                                  <div className="mt-4 pt-4 border-t border-slate-800 space-y-2 text-left">
+                                      <h6 className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-2"><Activity className="w-3 h-3 text-emerald-400"/> Métricas de Rendimiento</h6>
+                                      {getMetricDisplayValue('goals', p.performanceMetrics.goals) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Goal className="w-3 h-3 text-rose-400"/> Goles: {p.performanceMetrics.goals}</div>}
+                                      {getMetricDisplayValue('shots', p.performanceMetrics.shots) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Dribbble className="w-3 h-3 text-amber-400"/> Disparos: {p.performanceMetrics.shots}</div>}
+                                      {getMetricDisplayValue('shotsOnTarget', p.performanceMetrics.shotsOnTarget) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Target className="w-3 h-3 text-green-400"/> Disparos a Puerta: {p.performanceMetrics.shotsOnTarget}</div>}
+                                      {getMetricDisplayValue('passesCompleted', p.performanceMetrics.passesCompleted) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Footprints className="w-3 h-3 text-blue-400"/> Pases Realizados: {p.performanceMetrics.passesCompleted}</div>}
+                                      {getMetricDisplayValue('assists', p.performanceMetrics.assists) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Handshake className="w-3 h-3 text-purple-400"/> Asistencias: {p.performanceMetrics.assists}</div>}
+                                      {getMetricDisplayValue('freeKicks', p.performanceMetrics.freeKicks) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Flag className="w-3 h-3 text-cyan-400"/> Tiros Libres: {p.performanceMetrics.freeKicks}</div>}
+                                      {getMetricDisplayValue('duelsAerialWonPercentage', p.performanceMetrics.duelsAerialWonPercentage) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Split className="w-3 h-3 text-yellow-400"/> Duelos Aéreos Ganados: {p.performanceMetrics.duelsAerialWonPercentage}</div>}
+                                      {getMetricDisplayValue('duelsGroundWonPercentage', p.performanceMetrics.duelsGroundWonPercentage) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Split className="w-3 h-3 text-orange-400"/> Duelos Terrestres Ganados: {p.performanceMetrics.duelsGroundWonPercentage}</div>}
+                                      {getMetricDisplayValue('touchesPerGame', p.performanceMetrics.touchesPerGame) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Gauge className="w-3 h-3 text-yellow-400"/> Toques por Partido: {p.performanceMetrics.touchesPerGame}</div>}
+                                      {getMetricDisplayValue('passAccuracyMidfieldPercentage', p.performanceMetrics.passAccuracyMidfieldPercentage) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Footprints className="w-3 h-3 text-orange-400"/> Pases Precisos: {p.performanceMetrics.passAccuracyMidfieldPercentage}</div>}
+                                      {getMetricDisplayValue('ballLossesOwnHalf', p.performanceMetrics.ballLossesOwnHalf) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><ZapOff className="w-3 h-3 text-red-400"/> Pérdidas Campo Propio: {p.performanceMetrics.ballLossesOwnHalf}</div>}
+                                      {getMetricDisplayValue('passesUnderPressureMidfield', p.performanceMetrics.passesUnderPressureMidfield) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Weight className="w-3 h-3 text-lime-400"/> Pases Bajo Presión: {p.performanceMetrics.passesUnderPressureMidfield}</div>}
+                                      {getMetricDisplayValue('throughBalls', p.performanceMetrics.throughBalls) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Eye className="w-3 h-3 text-sky-400"/> Pases Filtrados: {p.performanceMetrics.throughBalls}</div>}
+                                      {getMetricDisplayValue('changesOfPlay', p.performanceMetrics.changesOfPlay) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Maximize className="w-3 h-3 text-indigo-400"/> Cambios de Orientación: {p.performanceMetrics.changesOfPlay}</div>}
+                                  </div>
+                               )}
                                {/* Puntos de Mejora */}
                                {p.improvementFeedback && (
                                   <div className="mt-4 pt-4 border-t border-slate-800 space-y-2 text-left">
@@ -1074,6 +1494,31 @@ const App: React.FC = () => {
                                <p className="text-[11px] text-slate-400 leading-relaxed italic border-l-2 border-slate-800 pl-4 py-1 flex-1">
                                  "{p.individualAnalysis}"
                                </p>
+                               {/* Métricas de Rendimiento */}
+                               {p.performanceMetrics && (
+                                  <div className="mt-4 pt-4 border-t border-slate-800 space-y-2 text-left">
+                                      <h6 className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-2"><Activity className="w-3 h-3 text-emerald-400"/> Métricas de Rendimiento</h6>
+                                      {getMetricDisplayValue('goals', p.performanceMetrics.goals) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Goal className="w-3 h-3 text-rose-400"/> Goles: {p.performanceMetrics.goals}</div>}
+                                      {getMetricDisplayValue('shots', p.performanceMetrics.shots) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Dribbble className="w-3 h-3 text-amber-400"/> Disparos: {p.performanceMetrics.shots}</div>}
+                                      {getMetricDisplayValue('shotsOnTarget', p.performanceMetrics.shotsOnTarget) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Target className="w-3 h-3 text-green-400"/> Disparos a Puerta: {p.performanceMetrics.shotsOnTarget}</div>}
+                                      {getMetricDisplayValue('passesCompleted', p.performanceMetrics.passesCompleted) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Footprints className="w-3 h-3 text-blue-400"/> Pases Realizados: {p.performanceMetrics.passesCompleted}</div>}
+                                      {getMetricDisplayValue('assists', p.performanceMetrics.assists) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Handshake className="w-3 h-3 text-purple-400"/> Asistencias: {p.performanceMetrics.assists}</div>}
+                                      {getMetricDisplayValue('freeKicks', p.performanceMetrics.freeKicks) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Flag className="w-3 h-3 text-cyan-400"/> Tiros Libres: {p.performanceMetrics.freeKicks}</div>}
+                                      {getMetricDisplayValue('duelsAerialWonPercentage', p.performanceMetrics.duelsAerialWonPercentage) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Split className="w-3 h-3 text-yellow-400"/> Duelos Aéreos Ganados: {p.performanceMetrics.duelsAerialWonPercentage}</div>}
+                                      {getMetricDisplayValue('duelsGroundWonPercentage', p.performanceMetrics.duelsGroundWonPercentage) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Split className="w-3 h-3 text-orange-400"/> Duelos Terrestres Ganados: {p.performanceMetrics.duelsGroundWonPercentage}</div>}
+                                      {getMetricDisplayValue('expectedGoals', p.performanceMetrics.expectedGoals) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Sigma className="w-3 h-3 text-yellow-400"/> Peligro Generado (xG): {p.performanceMetrics.expectedGoals}</div>}
+                                      {getMetricDisplayValue('expectedAssists', p.performanceMetrics.expectedAssists) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Sigma className="w-3 h-3 text-orange-400"/> Peligro Generado (xA): {p.performanceMetrics.expectedAssists}</div>}
+                                      {getMetricDisplayValue('dribblesCompletedPercentage', p.performanceMetrics.dribblesCompletedPercentage) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Dribbble className="w-3 h-3 text-lime-400"/> Regates Completados: {p.performanceMetrics.dribblesCompletedPercentage}</div>}
+                                      {getMetricDisplayValue('foulsSufferedDangerZone', p.performanceMetrics.foulsSufferedDangerZone) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Gavel className="w-3 h-3 text-sky-400"/> Faltas Recibidas (Z. Peligro): {p.performanceMetrics.foulsSufferedDangerZone}</div>}
+                                      {getMetricDisplayValue('goalsPer90', p.performanceMetrics.goalsPer90) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Goal className="w-3 h-3 text-indigo-400"/> Goles por 90 min: {p.performanceMetrics.goalsPer90}</div>}
+                                      {getMetricDisplayValue('shotsOnTargetToGoalRatio', p.performanceMetrics.shotsOnTargetToGoalRatio) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Target className="w-3 h-3 text-pink-400"/> Ratio T.Puerta/Gol: {p.performanceMetrics.shotsOnTargetToGoalRatio}</div>}
+                                      {getMetricDisplayValue('interceptionsFinalThird', p.performanceMetrics.interceptionsFinalThird) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Crosshair className="w-3 h-3 text-gray-400"/> Intercepciones (Últ. Tercio): {p.performanceMetrics.interceptionsFinalThird}</div>}
+                                      {getMetricDisplayValue('recoveriesAfterLoss', p.performanceMetrics.recoveriesAfterLoss) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><RefreshCcw className="w-3 h-3 text-teal-400"/> Recuperaciones Tras Pérdida: {p.performanceMetrics.recoveriesAfterLoss}</div>}
+                                      {getMetricDisplayValue('successfulTacklesOffensive', p.performanceMetrics.successfulTacklesOffensive) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><ShieldCheck className="w-3 h-3 text-emerald-400"/> Tackleadas Exitosas: {p.performanceMetrics.successfulTacklesOffensive}</div>}
+                                      {getMetricDisplayValue('passAccuracyOffensivePercentage', p.performanceMetrics.passAccuracyOffensivePercentage) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Footprints className="w-3 h-3 text-blue-400"/> Pases Precisos: {p.performanceMetrics.passAccuracyOffensivePercentage}</div>}
+                                      {getMetricDisplayValue('passesUnderPressureOffensive', p.performanceMetrics.passesUnderPressureOffensive) !== null && <div className="flex items-center gap-2 text-[10px] text-slate-300"><Weight className="w-3 h-3 text-purple-400"/> Pases Bajo Presión: {p.performanceMetrics.passesUnderPressureOffensive}</div>}
+                                  </div>
+                               )}
                                {/* Puntos de Mejora */}
                                {p.improvementFeedback && (
                                   <div className="mt-4 pt-4 border-t border-slate-800 space-y-2 text-left">
@@ -1141,12 +1586,68 @@ const App: React.FC = () => {
 
             {/* Acciones Finales */}
             <div className="flex justify-center gap-6 pt-16">
-                <button onClick={() => window.location.reload()} className="bg-slate-900 hover:bg-slate-800 text-slate-400 font-black py-5 px-16 rounded-[2rem] border border-slate-800 uppercase text-xs tracking-[0.3em] transition-all active:scale-95">
+                <button onClick={resetApp} className="bg-slate-900 hover:bg-slate-800 text-slate-400 font-black py-5 px-16 rounded-[2rem] border border-slate-800 uppercase text-xs tracking-[0.3em] transition-all active:scale-95">
                   Nuevo Análisis
                 </button>
                 <button onClick={exportToPDF} className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-5 px-16 rounded-[2rem] uppercase text-xs tracking-[0.3em] transition-all shadow-2xl shadow-emerald-500/30 flex items-center gap-3 active:scale-95">
                   <Download className="w-5 h-5" /> Descargar Dossier PDF
                 </button>
+            </div>
+          </div>
+        )}
+
+        {/* Nueva etapa: Lista de análisis guardados */}
+        {stage === 'savedAnalysesList' && (
+          <div className="max-w-4xl mx-auto py-12">
+            <div className="bg-slate-900/40 rounded-[3rem] border border-slate-800 p-12 shadow-2xl backdrop-blur-md">
+              <h3 className="text-3xl font-black uppercase italic mb-12 flex items-center gap-4">
+                <Archive className="w-8 h-8 text-emerald-500" /> Mis Análisis Guardados
+              </h3>
+              {savedAnalyses.length === 0 ? (
+                <div className="text-center py-16 text-slate-500 italic text-lg">
+                  No tienes análisis guardados todavía.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 custom-scrollbar max-h-[70vh] overflow-y-auto pr-2">
+                  {savedAnalyses.map((sa) => (
+                    <div key={sa.id} className="bg-slate-950/50 p-6 rounded-[2rem] border border-slate-800 flex flex-col justify-between shadow-lg hover:border-emerald-500/40 transition-all">
+                      <div>
+                        <p className="text-[10px] text-slate-500 font-black uppercase mb-2">
+                          {new Date(sa.timestamp).toLocaleDateString()} {new Date(sa.timestamp).toLocaleTimeString()}
+                        </p>
+                        <h5 className="text-lg font-black uppercase italic tracking-tighter text-slate-100 mb-3">
+                          {sa.teamA.name} {sa.score.teamA} - {sa.score.teamB} {sa.teamB.name}
+                        </h5>
+                        <p className="text-[11px] text-slate-400 leading-relaxed italic mb-4">
+                          Equipo Objetivo: <span className="text-emerald-400">{sa.targetTeamSide === 'local' ? sa.teamA.name : sa.teamB.name}</span>
+                        </p>
+                      </div>
+                      <div className="flex gap-3 mt-4">
+                        <button
+                          onClick={() => loadSavedAnalysis(sa.id)}
+                          className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-4 py-2 rounded-xl font-black text-[10px] uppercase transition-all shadow-md flex items-center justify-center gap-2"
+                        >
+                          <FileCheck2 className="w-4 h-4" /> Ver Informe
+                        </button>
+                        <button
+                          onClick={() => deleteSavedAnalysis(sa.id)}
+                          className="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-4 py-2 rounded-xl font-black text-[10px] uppercase transition-all shadow-md flex items-center justify-center gap-2"
+                        >
+                          <Trash2 className="w-4 h-4" /> Eliminar
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="mt-12 text-center">
+                <button
+                  onClick={() => setStage('upload')}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-black py-4 px-12 rounded-2xl transition-all uppercase text-sm shadow-xl"
+                >
+                  Volver
+                </button>
+              </div>
             </div>
           </div>
         )}
