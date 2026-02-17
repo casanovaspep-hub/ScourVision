@@ -59,8 +59,9 @@ import {
   CircleX, 
   Sparkles 
 } from 'lucide-react';
-// Eliminadas las importaciones de jspdf y jspdf-autotable
+// No es necesario importar jsPDF ni jspdf-autotable aquí, se cargan globalmente en index.html
 // import { jsPDF } from 'jspdf'; 
+// (window as any).jsPDF = jsPDF; // Workaround anterior, ya no necesario
 // import 'jspdf-autotable'; 
 
 const App: React.FC = () => {
@@ -229,7 +230,319 @@ const App: React.FC = () => {
     );
   };
 
-  // Función exportToPDF eliminada
+  const exportToPDF = () => { 
+    console.log("exportToPDF: Función de exportación de PDF llamada.");
+    console.log("exportToPDF: Current analysis data:", analysis);
+
+    if (!analysis) {
+      console.error("exportToPDF: No analysis data available to export.");
+      alert("No hay datos de análisis disponibles para exportar.");
+      return;
+    }
+    try {
+      console.log("exportToPDF: Intentando instanciar jsPDF...");
+      console.log('exportToPDF: Type of window.jspdf:', typeof (window as any).jspdf);
+      console.log('exportToPDF: Type of window.jspdf?.jsPDF:', typeof (window as any).jspdf?.jsPDF);
+
+      // Verificación explícita de que window.jspdf.jsPDF es un constructor
+      if (typeof (window as any).jspdf?.jsPDF !== 'function') {
+        throw new Error(
+          "La librería jsPDF no se ha cargado correctamente como un constructor. " +
+          "Por favor, verifica los scripts de jspdf en index.html y la consola del navegador " +
+          "para errores de carga de la librería. (window.jspdf.jsPDF es de tipo: " + 
+          typeof (window as any).jspdf?.jsPDF + ")"
+        );
+      }
+      
+      // Se instancia jsPDF usando la variable global disponible en `window.jspdf.jsPDF`
+      const doc = new ((window as any).jspdf.jsPDF)();
+      console.log("exportToPDF: jsPDF instanciado correctamente.");
+      const primaryColor = [16, 185, 129]; // Emerald-500
+      const darkColor = [15, 23, 42]; // Slate-900 equivalent for text
+      const greyTextColor = [71, 85, 105]; // Slate-500 equivalent for normal text in PDF
+
+      const targetTeamName = analysis.targetTeamSide === 'local' ? (analysis.teamA.name || 'Equipo Local') : (analysis.teamB.name || 'Equipo Visitante');
+      console.log("exportToPDF: Target team name:", targetTeamName);
+
+      // --- Portada ---
+      doc.setFillColor(darkColor[0], darkColor[1], darkColor[2]);
+      doc.rect(0, 0, 210, 50, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(24);
+      doc.setFont("helvetica", "bold");
+      doc.text('SCOUTVISION PRO - DOSSIER TÁCTICO', 105, 25, { align: 'center' });
+      doc.setFontSize(10);
+      doc.text(`AUDITORÍA INTEGRAL DE RENDIMIENTO: ${targetTeamName}`, 105, 38, { align: 'center' });
+      console.log("exportToPDF: Portada generada.");
+
+      // --- Marcador ---
+      doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+      doc.setFontSize(16);
+      doc.text(`${analysis.teamA.name || 'Equipo A'} ${analysis.score.teamA} - ${analysis.score.teamB} ${analysis.teamB.name || 'Equipo B'}`, 105, 65, { align: 'center' });
+      console.log("exportToPDF: Marcador añadido.");
+
+      // --- Tabla Stats ---
+      const statsData = Object.keys(statLabels).map(key => {
+        const statsObj = (analysis.stats as any)?.[key] || { teamA: 0, teamB: 0 };
+        const valA = statsObj.teamA ?? 0;
+        const valB = statsObj.teamB ?? 0;
+        const suffix = (key === 'possession' || key === 'passAccuracy') ? '%' : '';
+        return [statLabels[key], `${valA}${suffix}`, `${valB}${suffix}`]; // Ensure values are strings for autoTable
+      });
+      console.log("exportToPDF: statsData preparada:", statsData);
+
+      let currentY = 75; // Initial Y for the stats table
+      // `autoTable` ahora debería estar disponible en el objeto `doc`
+      (doc as any).autoTable({
+        startY: currentY, 
+        head: [['Parámetro', 'Local', 'Visitante']],
+        body: statsData,
+        theme: 'grid',
+        headStyles: { fillColor: primaryColor, textColor: [255, 255, 255] }, // Set text color to white for readability on colored head
+        styles: { fontSize: 8, halign: 'center' },
+      });
+      
+      // Update currentY after autoTable, providing a safe fallback if autoTable didn't return a finalY (shouldn't happen with valid data)
+      currentY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 15 : 150; 
+      if (isNaN(currentY)) { 
+          console.error("exportToPDF: currentY calculated as NaN after autoTable. Resetting to 150.");
+          currentY = 150; 
+      }
+      console.log("exportToPDF: Tabla de estadísticas añadida. currentY:", currentY);
+
+      // --- Informe Táctico Colectivo ---
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+      doc.text('ANÁLISIS TÁCTICO COLECTIVO', 10, currentY); // Left-aligned title
+      console.log("exportToPDF: Iniciando sección de análisis táctico colectivo.");
+
+      const addTechnicalPhaseToPdf = (title: string, phase: TechnicalPhase | undefined, yPos: number, pageBreakThreshold: number = 260) => {
+          if (!phase) {
+              console.warn(`exportToPDF: Fase técnica '${title}' no disponible.`);
+              return yPos; // Skip if phase is undefined
+          }
+
+          if (yPos > pageBreakThreshold) {
+              doc.addPage();
+              yPos = 20;
+          }
+          doc.setFontSize(12);
+          doc.setFont("helvetica", "bold");
+          doc.text(title, 10, yPos);
+          yPos += 6; 
+          doc.setFontSize(9);
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(greyTextColor[0], greyTextColor[1], greyTextColor[2]); 
+          const splitDesc = doc.splitTextToSize(phase.description || 'Descripción no disponible.', 180); // Fallback for description
+          doc.text(splitDesc, 10, yPos);
+          yPos += (splitDesc.length * doc.getLineHeight()) + 4; 
+
+          if (phase.keyAspects && phase.keyAspects.length > 0) {
+              if (yPos > pageBreakThreshold - 20) { 
+                  doc.addPage();
+                  yPos = 20;
+              }
+              doc.setFontSize(10);
+              doc.setFont("helvetica", "bold");
+              doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]); 
+              doc.text('Puntos Clave:', 10, yPos);
+              yPos += 5; 
+              doc.setFontSize(9);
+              doc.setFont("helvetica", "normal");
+              doc.setTextColor(greyTextColor[0], greyTextColor[1], greyTextColor[2]); 
+              phase.keyAspects.forEach(aspect => {
+                  const splitAspect = doc.splitTextToSize(`• ${aspect}`, 180);
+                  doc.text(splitAspect, 10, yPos);
+                  yPos += (splitAspect.length * doc.getLineHeight());
+              });
+              yPos += 6; 
+          }
+          return yPos;
+      };
+
+      currentY = addTechnicalPhaseToPdf('Fase Ofensiva:', analysis.technicalReport?.offensivePhase, currentY + 10);
+      currentY = addTechnicalPhaseToPdf('Fase Defensiva:', analysis.technicalReport?.defensivePhase, currentY); 
+      currentY = addTechnicalPhaseToPdf('Transiciones (Ataque-Defensa / Defensa-Ataque):', analysis.technicalReport?.transitions, currentY);
+      currentY = addTechnicalPhaseToPdf('Estrategia y Balón Parado:', analysis.technicalReport?.setPieces, currentY);
+      console.log("exportToPDF: Fases técnicas añadidas. currentY:", currentY);
+      
+      // --- Conclusiones Tácticas Clave (Separado) ---
+      if (currentY > 260) { doc.addPage(); currentY = 20; }
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]); // Primary color for key conclusions
+      doc.text('CONCLUSIONES TÁCTICAS CLAVE', 10, currentY);
+      currentY += 8;
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+      const splitSummary = doc.splitTextToSize(analysis.tacticalSummary || 'Resumen no disponible.', 180); // Fallback for summary
+      doc.text(splitSummary, 10, currentY);
+      currentY += (splitSummary.length * doc.getLineHeight()) + 10;
+      console.log("exportToPDF: Resumen táctico añadido. currentY:", currentY);
+
+
+      // --- Scouting Individual por Zonas ---
+      doc.addPage();
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]); // Dark color for main title
+      doc.text('INFORME DE RENDIMIENTO POR ZONAS', 10, 20);
+      console.log("exportToPDF: Iniciando sección de informe de rendimiento individual por zonas.");
+      
+      const zones = [
+        { id: 'defensiva', label: 'Zona Defensiva (Bloque Defensivo)' }, 
+        { id: 'media', label: 'Zona de Construcción (Bloque de Construcción)' }, 
+        { id: 'ofensiva', label: 'Zona Ofensiva (Bloque Ofensivo)' } 
+      ];
+
+      currentY = 30;
+      const PAGE_BREAK_THRESHOLD_PLAYER = 255; 
+
+      zones.forEach(zone => {
+        const players = analysis.keyPerformers?.filter(p => p.zone === zone.id) || []; // Ensure players array is not null
+        if (players.length > 0) {
+          if (currentY > PAGE_BREAK_THRESHOLD_PLAYER - 15) { 
+              doc.addPage();
+              currentY = 20;
+          }
+          doc.setFontSize(12);
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+          doc.text(zone.label, 10, currentY);
+          currentY += 8; 
+          
+          players.forEach(p => {
+              const individualAnalysisText = p.individualAnalysis || 'Análisis no disponible.';
+              const strengths = p.improvementFeedback?.strengths || [];
+              const weaknesses = p.improvementFeedback?.weaknesses || [];
+              const improvementAdvice = p.improvementFeedback?.improvementAdvice || [];
+
+              // Estimate height needed for this player's info
+              const playerInfoHeight = 
+                  15 + 
+                  (doc.splitTextToSize(individualAnalysisText, 180).length * doc.getLineHeight()) + 6 + 
+                  (strengths.length > 0 ? (doc.getLineHeight() + 1 + (strengths.length * doc.getLineHeight()) + 4) : 0) + 
+                  (weaknesses.length > 0 ? (doc.getLineHeight() + 1 + (weaknesses.length * doc.getLineHeight()) + 4) : 0) + 
+                  (improvementAdvice.length > 0 ? (doc.getLineHeight() + 1 + (improvementAdvice.length * doc.getLineHeight())) : 0) + 
+                  10; 
+
+              if (currentY + playerInfoHeight > PAGE_BREAK_THRESHOLD_PLAYER) {
+                  doc.addPage();
+                  currentY = 20; 
+              }
+
+              // Player Name and Dorsal
+              doc.setFontSize(11);
+              doc.setFont("helvetica", "bold");
+              doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+              doc.text(`#${p.dorsal} ${p.player}`, 10, currentY);
+              currentY += 8; 
+
+              // Individual Analysis
+              doc.setFontSize(9);
+              doc.setFont("helvetica", "normal"); 
+              doc.setTextColor(greyTextColor[0], greyTextColor[1], greyTextColor[2]);
+              const individualAnalysisLines = doc.splitTextToSize(`"${individualAnalysisText}"`, 180);
+              doc.text(individualAnalysisLines, 10, currentY);
+              currentY += (individualAnalysisLines.length * doc.getLineHeight()) + 6; 
+
+              // Improvement Feedback
+              if (p.improvementFeedback) {
+                  doc.setFontSize(9);
+                  doc.setFont("helvetica", "bold");
+                  doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+                  doc.text('MEJORA DE RENDIMIENTO', 10, currentY);
+                  currentY += 6; 
+                  
+                  // Puntos Fuertes
+                  if (strengths.length > 0) {
+                      doc.setFontSize(9); 
+                      doc.setFont("helvetica", "bold");
+                      doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+                      doc.text('Fortalezas:', 15, currentY);
+                      currentY += doc.getLineHeight();
+                      doc.setFont("helvetica", "normal");
+                      doc.setTextColor(greyTextColor[0], greyTextColor[1], greyTextColor[2]);
+                      strengths.forEach(s => {
+                          const strengthItemLines = doc.splitTextToSize(`• ${s}`, 175);
+                          doc.text(strengthItemLines, 20, currentY);
+                          currentY += (strengthItemLines.length * doc.getLineHeight());
+                      });
+                      currentY += 4; 
+                  }
+
+                  // Áreas de Mejora
+                  if (weaknesses.length > 0) {
+                      doc.setFontSize(9); 
+                      doc.setFont("helvetica", "bold");
+                      doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+                      doc.text('Debilidades:', 15, currentY);
+                      currentY += doc.getLineHeight();
+                      doc.setFont("helvetica", "normal");
+                      doc.setTextColor(greyTextColor[0], greyTextColor[1], greyTextColor[2]);
+                      weaknesses.forEach(w => {
+                          const weaknessItemLines = doc.splitTextToSize(`• ${w}`, 175);
+                          doc.text(weaknessItemLines, 20, currentY);
+                          currentY += (weaknessItemLines.length * doc.getLineHeight());
+                      });
+                      currentY += 4; 
+                  }
+
+                  // Consejos
+                  if (improvementAdvice.length > 0) {
+                      doc.setFontSize(9); 
+                      doc.setFont("helvetica", "bold");
+                      doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+                      doc.text('Consejos:', 15, currentY);
+                      currentY += doc.getLineHeight();
+                      doc.setFont("helvetica", "normal");
+                      doc.setTextColor(greyTextColor[0], greyTextColor[1], greyTextColor[2]);
+                      improvementAdvice.forEach(a => {
+                          const adviceItemLines = doc.splitTextToSize(`• ${a}`, 175);
+                          doc.text(adviceItemLines, 20, currentY);
+                          currentY += (adviceItemLines.length * doc.getLineHeight());
+                      });
+                  }
+              }
+              currentY += 10; 
+          });
+        } else {
+          doc.setFontSize(10);
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(greyTextColor[0], greyTextColor[1], greyTextColor[2]);
+          doc.text('Sin registros destacados en esta zona.', 10, currentY);
+          currentY += 10;
+        }
+        currentY += 15; 
+      });
+      console.log("exportToPDF: Análisis individual de jugadores añadido. currentY:", currentY);
+
+      console.log("exportToPDF: Preparando el documento PDF para la descarga...");
+      const pdfBlob = doc.output('blob'); // Generate PDF as a Blob
+      const blobUrl = URL.createObjectURL(pdfBlob); // Create a URL for the Blob
+
+      const link = document.createElement('a'); // Create a temporary anchor element
+      link.href = blobUrl;
+      link.download = `Dossier_Táctico_${targetTeamName}.pdf`; // Set the download filename
+      document.body.appendChild(link); // Append the link to the document body
+      link.click(); // Programmatically click the link to trigger download
+      
+      // Añadir un pequeño retraso antes de limpiar para asegurar que la descarga se inicie
+      setTimeout(() => {
+        document.body.removeChild(link); // Remove the link from the document
+        URL.revokeObjectURL(blobUrl); // Revoke the Blob URL to free up memory
+        console.log("exportToPDF: Limpieza de recursos completada tras intento de descarga.");
+      }, 250); // Aumentado el retraso a 250ms
+
+      console.log("exportToPDF: Operación de descarga de PDF iniciada.");
+      alert("¡Dossier Táctico generado con éxito!"); // Final success alert
+    } catch (e) {
+      console.error("exportToPDF: Error durante la generación del PDF:", e);
+      alert(`Error al generar el PDF. Por favor, revisa la consola del navegador para más detalles: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
 
   const targetTeamName = analysis ? (analysis.targetTeamSide === 'local' ? (analysis.teamA?.name || 'Local') : (analysis.teamB?.name || 'Visitante')) : '';
   
@@ -279,7 +592,11 @@ const App: React.FC = () => {
               <p className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em]">Auditoría Táctica UEFA PRO</p>
             </div>
           </div>
-          {/* Botón de exportar PDF eliminado del header */}
+          {analysis && (
+            <button onClick={exportToPDF} className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-6 py-2.5 rounded-xl font-black text-[10px] uppercase transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2">
+               <FileDown className="w-4 h-4" /> Exportar Dossier Táctico
+            </button>
+          )}
         </div>
       </header>
 
@@ -511,8 +828,8 @@ const App: React.FC = () => {
                          <ArrowUpRight className="w-6 h-6" />
                          <h5 className="font-black uppercase tracking-widest text-xs italic">Fase Ofensiva</h5>
                       </div>
-                      <p className="text-[12px] text-slate-400 leading-relaxed italic">{analysis.technicalReport.offensivePhase.description}</p>
-                      {analysis.technicalReport.offensivePhase.keyAspects && analysis.technicalReport.offensivePhase.keyAspects.length > 0 && (
+                      <p className="text-[12px] text-slate-400 leading-relaxed italic">{analysis.technicalReport.offensivePhase?.description}</p>
+                      {analysis.technicalReport.offensivePhase?.keyAspects && analysis.technicalReport.offensivePhase.keyAspects.length > 0 && (
                           <ul className="list-disc list-inside text-[11px] text-slate-500 space-y-1 pl-4 border-l border-slate-800 py-1">
                               {analysis.technicalReport.offensivePhase.keyAspects.map((aspect, idx) => (
                                   <li key={idx}>{aspect}</li>
@@ -526,8 +843,8 @@ const App: React.FC = () => {
                          <ShieldCheck className="w-6 h-6" />
                          <h5 className="font-black uppercase tracking-widest text-xs italic">Fase Defensiva</h5>
                       </div>
-                      <p className="text-[12px] text-slate-400 leading-relaxed italic">{analysis.technicalReport.defensivePhase.description}</p>
-                      {analysis.technicalReport.defensivePhase.keyAspects && analysis.technicalReport.defensivePhase.keyAspects.length > 0 && (
+                      <p className="text-[12px] text-slate-400 leading-relaxed italic">{analysis.technicalReport.defensivePhase?.description}</p>
+                      {analysis.technicalReport.defensivePhase?.keyAspects && analysis.technicalReport.defensivePhase.keyAspects.length > 0 && (
                           <ul className="list-disc list-inside text-[11px] text-slate-500 space-y-1 pl-4 border-l border-slate-800 py-1">
                               {analysis.technicalReport.defensivePhase.keyAspects.map((aspect, idx) => (
                                   <li key={idx}>{aspect}</li>
@@ -541,8 +858,8 @@ const App: React.FC = () => {
                          <ArrowRightLeft className="w-6 h-6" />
                          <h5 className="font-black uppercase tracking-widest text-xs italic">Transiciones</h5>
                       </div>
-                      <p className="text-[12px] text-slate-400 leading-relaxed italic">{analysis.technicalReport.transitions.description}</p>
-                      {analysis.technicalReport.transitions.keyAspects && analysis.technicalReport.transitions.keyAspects.length > 0 && (
+                      <p className="text-[12px] text-slate-400 leading-relaxed italic">{analysis.technicalReport.transitions?.description}</p>
+                      {analysis.technicalReport.transitions?.keyAspects && analysis.technicalReport.transitions.keyAspects.length > 0 && (
                           <ul className="list-disc list-inside text-[11px] text-slate-500 space-y-1 pl-4 border-l border-slate-800 py-1">
                               {analysis.technicalReport.transitions.keyAspects.map((aspect, idx) => (
                                   <li key={idx}>{aspect}</li>
@@ -556,8 +873,8 @@ const App: React.FC = () => {
                          <Flag className="w-6 h-6" />
                          <h5 className="font-black uppercase tracking-widest text-xs italic">Balón Parado</h5>
                       </div>
-                      <p className="text-[12px] text-slate-400 leading-relaxed italic">{analysis.technicalReport.setPieces.description}</p>
-                      {analysis.technicalReport.setPieces.keyAspects && analysis.technicalReport.setPieces.length > 0 && (
+                      <p className="text-[12px] text-slate-400 leading-relaxed italic">{analysis.technicalReport.setPieces?.description}</p>
+                      {analysis.technicalReport.setPieces?.keyAspects && analysis.technicalReport.setPieces.keyAspects.length > 0 && (
                           <ul className="list-disc list-inside text-[11px] text-slate-500 space-y-1 pl-4 border-l border-slate-800 py-1">
                               {analysis.technicalReport.setPieces.keyAspects.map((aspect, idx) => (
                                   <li key={idx}>{aspect}</li>
@@ -597,7 +914,7 @@ const App: React.FC = () => {
                          <h5 className="text-[11px] font-black uppercase tracking-[0.3em] text-cyan-500">Bloque Defensivo (Defensas / Portería)</h5>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                         {analysis.keyPerformers.filter(p => p.zone === 'defensiva').map(p => (
+                         {(analysis.keyPerformers || []).filter(p => p.zone === 'defensiva').map(p => (
                             <div key={`${p.dorsal}-${p.player}`} className="bg-slate-950/50 p-6 rounded-[2rem] border border-slate-800 relative group hover:border-emerald-500/40 transition-all flex flex-col shadow-lg">
                                <div className="flex items-center justify-between mb-4">
                                  <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-emerald-500 font-black text-lg border border-slate-800 shadow-inner">
@@ -615,27 +932,27 @@ const App: React.FC = () => {
                                {p.improvementFeedback && (
                                   <div className="mt-4 pt-4 border-t border-slate-800 space-y-2 text-left">
                                       <h6 className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-2"><Sparkles className="w-3 h-3 text-emerald-400"/> Mejora de Rendimiento</h6>
-                                      {p.improvementFeedback.strengths.length > 0 && (
+                                      {(p.improvementFeedback.strengths || []).length > 0 && (
                                         <div>
                                           <p className="text-[10px] font-bold text-emerald-300 flex items-center gap-1"><BadgeCent className="w-3 h-3"/> Fortalezas:</p>
                                           <ul className="list-disc list-inside text-[10px] text-slate-400 pl-3">
-                                            {p.improvementFeedback.strengths.map((item, idx) => <li key={idx}>{item}</li>)}
+                                            {(p.improvementFeedback.strengths || []).map((item, idx) => <li key={idx}>{item}</li>)}
                                           </ul>
                                         </div>
                                       )}
-                                      {p.improvementFeedback.weaknesses.length > 0 && (
+                                      {(p.improvementFeedback.weaknesses || []).length > 0 && (
                                         <div>
                                           <p className="text-[10px] font-bold text-red-300 flex items-center gap-1"><CircleX className="w-3 h-3"/> Debilidades:</p>
                                           <ul className="list-disc list-inside text-[10px] text-slate-400 pl-3">
-                                            {p.improvementFeedback.weaknesses.map((item, idx) => <li key={idx}>{item}</li>)}
+                                            {(p.improvementFeedback.weaknesses || []).map((item, idx) => <li key={idx}>{item}</li>)}
                                           </ul>
                                         </div>
                                       )}
-                                      {p.improvementFeedback.improvementAdvice.length > 0 && (
+                                      {(p.improvementFeedback.improvementAdvice || []).length > 0 && (
                                         <div>
                                           <p className="text-[10px] font-bold text-amber-300 flex items-center gap-1"><Lightbulb className="w-3 h-3"/> Consejos:</p>
                                           <ul className="list-disc list-inside text-[10px] text-slate-400 pl-3">
-                                            {p.improvementFeedback.improvementAdvice.map((item, idx) => <li key={idx}>{item}</li>)}
+                                            {(p.improvementFeedback.improvementAdvice || []).map((item, idx) => <li key={idx}>{item}</li>)}
                                           </ul>
                                         </div>
                                       )}
@@ -643,7 +960,7 @@ const App: React.FC = () => {
                                )}
                              </div>
                          ))}
-                         {analysis.keyPerformers.filter(p => p.zone === 'defensiva').length === 0 && (
+                         {(analysis.keyPerformers || []).filter(p => p.zone === 'defensiva').length === 0 && (
                            <div className="col-span-full py-8 text-center bg-slate-900/40 rounded-3xl border border-slate-800/50 italic text-slate-600 text-[10px] uppercase font-bold tracking-widest">Sin registros destacados en esta zona</div>
                          )}
                       </div>
@@ -656,7 +973,7 @@ const App: React.FC = () => {
                          <h5 className="text-[11px] font-black uppercase tracking-[0.3em] text-amber-500">Zona de Construcción (Bloque de Construcción)</h5>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                         {analysis.keyPerformers.filter(p => p.zone === 'media').map(p => (
+                         {(analysis.keyPerformers || []).filter(p => p.zone === 'media').map(p => (
                            <div key={`${p.dorsal}-${p.player}`} className="bg-slate-950/50 p-6 rounded-[2rem] border border-slate-800 relative group hover:border-emerald-500/40 transition-all flex flex-col shadow-lg">
                                <div className="flex items-center justify-between mb-4">
                                  <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-emerald-500 font-black text-lg border border-slate-800 shadow-inner">
@@ -674,27 +991,27 @@ const App: React.FC = () => {
                                {p.improvementFeedback && (
                                   <div className="mt-4 pt-4 border-t border-slate-800 space-y-2 text-left">
                                       <h6 className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-2"><Sparkles className="w-3 h-3 text-emerald-400"/> Mejora de Rendimiento</h6>
-                                      {p.improvementFeedback.strengths.length > 0 && (
+                                      {(p.improvementFeedback.strengths || []).length > 0 && (
                                         <div>
                                           <p className="text-[10px] font-bold text-emerald-300 flex items-center gap-1"><BadgeCent className="w-3 h-3"/> Fortalezas:</p>
                                           <ul className="list-disc list-inside text-[10px] text-slate-400 pl-3">
-                                            {p.improvementFeedback.strengths.map((item, idx) => <li key={idx}>{item}</li>)}
+                                            {(p.improvementFeedback.strengths || []).map((item, idx) => <li key={idx}>{item}</li>)}
                                           </ul>
                                         </div>
                                       )}
-                                      {p.improvementFeedback.weaknesses.length > 0 && (
+                                      {(p.improvementFeedback.weaknesses || []).length > 0 && (
                                         <div>
                                           <p className="text-[10px] font-bold text-red-300 flex items-center gap-1"><CircleX className="w-3 h-3"/> Debilidades:</p>
                                           <ul className="list-disc list-inside text-[10px] text-slate-400 pl-3">
-                                            {p.improvementFeedback.weaknesses.map((item, idx) => <li key={idx}>{item}</li>)}
+                                            {(p.improvementFeedback.weaknesses || []).map((item, idx) => <li key={idx}>{item}</li>)}
                                           </ul>
                                         </div>
                                       )}
-                                      {p.improvementFeedback.improvementAdvice.length > 0 && (
+                                      {(p.improvementFeedback.improvementAdvice || []).length > 0 && (
                                         <div>
                                           <p className="text-[10px] font-bold text-amber-300 flex items-center gap-1"><Lightbulb className="w-3 h-3"/> Consejos:</p>
                                           <ul className="list-disc list-inside text-[10px] text-slate-400 pl-3">
-                                            {p.improvementFeedback.improvementAdvice.map((item, idx) => <li key={idx}>{item}</li>)}
+                                            {(p.improvementFeedback.improvementAdvice || []).map((item, idx) => <li key={idx}>{item}</li>)}
                                           </ul>
                                         </div>
                                       )}
@@ -702,7 +1019,7 @@ const App: React.FC = () => {
                                )}
                              </div>
                          ))}
-                         {analysis.keyPerformers.filter(p => p.zone === 'media').length === 0 && (
+                         {(analysis.keyPerformers || []).filter(p => p.zone === 'media').length === 0 && (
                            <div className="col-span-full py-8 text-center bg-slate-900/40 rounded-3xl border border-slate-800/50 italic text-slate-600 text-[10px] uppercase font-bold tracking-widest">Sin registros destacados en esta zona</div>
                          )}
                       </div>
@@ -715,7 +1032,7 @@ const App: React.FC = () => {
                          <h5 className="text-[11px] font-black uppercase tracking-[0.3em] text-rose-500">Zona Ofensiva (Bloque Ofensivo)</h5>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                         {analysis.keyPerformers.filter(p => p.zone === 'ofensiva').map(p => (
+                         {(analysis.keyPerformers || []).filter(p => p.zone === 'ofensiva').map(p => (
                            <div key={`${p.dorsal}-${p.player}`} className="bg-slate-950/50 p-6 rounded-[2rem] border border-slate-800 relative group hover:border-emerald-500/40 transition-all flex flex-col shadow-lg">
                                <div className="flex items-center justify-between mb-4">
                                  <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-emerald-500 font-black text-lg border border-slate-800 shadow-inner">
@@ -733,27 +1050,27 @@ const App: React.FC = () => {
                                {p.improvementFeedback && (
                                   <div className="mt-4 pt-4 border-t border-slate-800 space-y-2 text-left">
                                       <h6 className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-2"><Sparkles className="w-3 h-3 text-emerald-400"/> Mejora de Rendimiento</h6>
-                                      {p.improvementFeedback.strengths.length > 0 && (
+                                      {(p.improvementFeedback.strengths || []).length > 0 && (
                                         <div>
                                           <p className="text-[10px] font-bold text-emerald-300 flex items-center gap-1"><BadgeCent className="w-3 h-3"/> Fortalezas:</p>
                                           <ul className="list-disc list-inside text-[10px] text-slate-400 pl-3">
-                                            {p.improvementFeedback.strengths.map((item, idx) => <li key={idx}>{item}</li>)}
+                                            {(p.improvementFeedback.strengths || []).map((item, idx) => <li key={idx}>{item}</li>)}
                                           </ul>
                                         </div>
                                       )}
-                                      {p.improvementFeedback.weaknesses.length > 0 && (
+                                      {(p.improvementFeedback.weaknesses || []).length > 0 && (
                                         <div>
                                           <p className="text-[10px] font-bold text-red-300 flex items-center gap-1"><CircleX className="w-3 h-3"/> Debilidades:</p>
                                           <ul className="list-disc list-inside text-[10px] text-slate-400 pl-3">
-                                            {p.improvementFeedback.weaknesses.map((item, idx) => <li key={idx}>{item}</li>)}
+                                            {(p.improvementFeedback.weaknesses || []).map((item, idx) => <li key={idx}>{item}</li>)}
                                           </ul>
                                         </div>
                                       )}
-                                      {p.improvementFeedback.improvementAdvice.length > 0 && (
+                                      {(p.improvementFeedback.improvementAdvice || []).length > 0 && (
                                         <div>
                                           <p className="text-[10px] font-bold text-amber-300 flex items-center gap-1"><Lightbulb className="w-3 h-3"/> Consejos:</p>
                                           <ul className="list-disc list-inside text-[10px] text-slate-400 pl-3">
-                                            {p.improvementFeedback.improvementAdvice.map((item, idx) => <li key={idx}>{item}</li>)}
+                                            {(p.improvementFeedback.improvementAdvice || []).map((item, idx) => <li key={idx}>{item}</li>)}
                                           </ul>
                                         </div>
                                       )}
@@ -761,7 +1078,7 @@ const App: React.FC = () => {
                                )}
                              </div>
                          ))}
-                         {analysis.keyPerformers.filter(p => p.zone === 'ofensiva').length === 0 && (
+                         {(analysis.keyPerformers || []).filter(p => p.zone === 'ofensiva').length === 0 && (
                            <div className="col-span-full py-8 text-center bg-slate-900/40 rounded-3xl border border-slate-800/50 italic text-slate-600 text-[10px] uppercase font-bold tracking-widest">Sin registros destacados en esta zona</div>
                          )}
                       </div>
@@ -799,7 +1116,9 @@ const App: React.FC = () => {
                 <button onClick={() => window.location.reload()} className="bg-slate-900 hover:bg-slate-800 text-slate-400 font-black py-5 px-16 rounded-[2rem] border border-slate-800 uppercase text-xs tracking-[0.3em] transition-all active:scale-95">
                   Nuevo Análisis
                 </button>
-                {/* Botón de descargar dossier PDF eliminado */}
+                <button onClick={exportToPDF} className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-5 px-16 rounded-[2rem] uppercase text-xs tracking-[0.3em] transition-all shadow-2xl shadow-emerald-500/30 flex items-center gap-3 active:scale-95">
+                  <Download className="w-5 h-5" /> Descargar Dossier PDF
+                </button>
             </div>
           </div>
         )}
