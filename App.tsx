@@ -241,21 +241,20 @@ const App: React.FC = () => {
     }
     try {
       console.log("exportToPDF: Intentando instanciar jsPDF...");
-      console.log('exportToPDF: Type of window.jspdf:', typeof (window as any).jspdf);
-      console.log('exportToPDF: Type of window.jspdf?.jsPDF:', typeof (window as any).jspdf?.jsPDF);
+      console.log('exportToPDF: Type of window.jsPDF:', typeof (window as any).jsPDF); // Changed to window.jsPDF
 
-      // Verificación explícita de que window.jspdf.jsPDF es un constructor
-      if (typeof (window as any).jspdf?.jsPDF !== 'function') {
+      // Verificación explícita de que window.jsPDF es un constructor
+      if (typeof (window as any).jsPDF !== 'function') { // Changed to window.jsPDF
         throw new Error(
           "La librería jsPDF no se ha cargado correctamente como un constructor. " +
           "Por favor, verifica los scripts de jspdf en index.html y la consola del navegador " +
-          "para errores de carga de la librería. (window.jspdf.jsPDF es de tipo: " + 
-          typeof (window as any).jspdf?.jsPDF + ")"
+          "para errores de carga de la librería. (window.jsPDF es de tipo: " + // Changed to window.jsPDF
+          typeof (window as any).jsPDF + ")" // Changed to window.jsPDF
         );
       }
       
-      // Se instancia jsPDF usando la variable global disponible en `window.jspdf.jsPDF`
-      const doc = new ((window as any).jspdf.jsPDF)();
+      // Se instancia jsPDF usando la variable global disponible en `window.jsPDF`
+      const doc = new ((window as any).jsPDF)(); // Changed to window.jsPDF
       console.log("exportToPDF: jsPDF instanciado correctamente.");
       const primaryColor = [16, 185, 129]; // Emerald-500
       const darkColor = [15, 23, 42]; // Slate-900 equivalent for text
@@ -403,15 +402,41 @@ const App: React.FC = () => {
       zones.forEach(zone => {
         const players = analysis.keyPerformers?.filter(p => p.zone === zone.id) || []; // Ensure players array is not null
         if (players.length > 0) {
-          if (currentY > PAGE_BREAK_THRESHOLD_PLAYER - 15) { 
-              doc.addPage();
-              currentY = 20;
+          // Calculate estimated height for the zone title + first player to decide on page break
+          let estimatedFirstPlayerBlockHeight = 0;
+          const p = players[0]; // Assume at least one player if players.length > 0
+          const individualAnalysisText = p.individualAnalysis || 'Análisis no disponible.';
+          const strengths = p.improvementFeedback?.strengths || [];
+          const weaknesses = p.improvementFeedback?.weaknesses || [];
+          const improvementAdvice = p.improvementFeedback?.improvementAdvice || [];
+
+          estimatedFirstPlayerBlockHeight =
+              7 + // Space after zone title
+              15 + // Player Name and Dorsal + padding for title (11pt + 7pt margin)
+              (doc.splitTextToSize(`"${individualAnalysisText}"`, 180).length * doc.getLineHeight()) + 4 + // Individual analysis + margin
+              (p.improvementFeedback ? (
+                  4 + // MEJORA DE RENDIMIENTO title + margin
+                  (strengths.length > 0 ? (doc.getLineHeight() + (strengths.length * doc.getLineHeight()) + 3) : 0) + // Strengths section + margin
+                  (weaknesses.length > 0 ? (doc.getLineHeight() + (weaknesses.length * doc.getLineHeight()) + 3) : 0) + // Weaknesses section + margin
+                  (improvementAdvice.length > 0 ? (doc.getLineHeight() + (improvementAdvice.length * doc.getLineHeight())) : 0) // Advice section
+              ) : 0) +
+              8; // Space after player's full section
+
+          const zoneTitleLineHeight = doc.getLineHeight(12); // Line height for 12pt font
+          const zoneTitleSpacing = 7; // Space after zone title
+          const totalZoneHeaderAndFirstPlayerHeight = zoneTitleLineHeight + zoneTitleSpacing + estimatedFirstPlayerBlockHeight;
+
+          // If currentY for the zone title + first player block would push beyond the threshold
+          if (currentY + totalZoneHeaderAndFirstPlayerHeight > PAGE_BREAK_THRESHOLD_PLAYER) {
+            doc.addPage();
+            currentY = 20;
           }
+
           doc.setFontSize(12);
           doc.setFont("helvetica", "bold");
           doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
           doc.text(zone.label, 10, currentY);
-          currentY += 8; 
+          currentY += 7; // Espaciado reducido después del título de zona
           
           players.forEach(p => {
               const individualAnalysisText = p.individualAnalysis || 'Análisis no disponible.';
@@ -419,14 +444,17 @@ const App: React.FC = () => {
               const weaknesses = p.improvementFeedback?.weaknesses || [];
               const improvementAdvice = p.improvementFeedback?.improvementAdvice || [];
 
-              // Estimate height needed for this player's info
+              // Estimate height needed for this player's info (re-calculating for precision per player)
               const playerInfoHeight = 
-                  15 + 
-                  (doc.splitTextToSize(individualAnalysisText, 180).length * doc.getLineHeight()) + 6 + 
-                  (strengths.length > 0 ? (doc.getLineHeight() + 1 + (strengths.length * doc.getLineHeight()) + 4) : 0) + 
-                  (weaknesses.length > 0 ? (doc.getLineHeight() + 1 + (weaknesses.length * doc.getLineHeight()) + 4) : 0) + 
-                  (improvementAdvice.length > 0 ? (doc.getLineHeight() + 1 + (improvementAdvice.length * doc.getLineHeight())) : 0) + 
-                  10; 
+                  7 + // Player Name and Dorsal + padding (11pt + 7pt margin)
+                  (doc.splitTextToSize(`"${individualAnalysisText}"`, 180).length * doc.getLineHeight()) + 4 + // Individual analysis + margin
+                  (p.improvementFeedback ? (
+                      4 + // MEJORA DE RENDIMIENTO title + margin
+                      (strengths.length > 0 ? (doc.getLineHeight() + (strengths.length * doc.getLineHeight()) + 3) : 0) + // Strengths section + margin
+                      (weaknesses.length > 0 ? (doc.getLineHeight() + (weaknesses.length * doc.getLineHeight()) + 3) : 0) + // Weaknesses section + margin
+                      (improvementAdvice.length > 0 ? (doc.getLineHeight() + (improvementAdvice.length * doc.getLineHeight())) : 0) // Advice section
+                  ) : 0) +
+                  8; // Space after player's full section
 
               if (currentY + playerInfoHeight > PAGE_BREAK_THRESHOLD_PLAYER) {
                   doc.addPage();
@@ -438,7 +466,7 @@ const App: React.FC = () => {
               doc.setFont("helvetica", "bold");
               doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
               doc.text(`#${p.dorsal} ${p.player}`, 10, currentY);
-              currentY += 8; 
+              currentY += 7; // Espaciado reducido después del nombre del jugador
 
               // Individual Analysis
               doc.setFontSize(9);
@@ -446,7 +474,7 @@ const App: React.FC = () => {
               doc.setTextColor(greyTextColor[0], greyTextColor[1], greyTextColor[2]);
               const individualAnalysisLines = doc.splitTextToSize(`"${individualAnalysisText}"`, 180);
               doc.text(individualAnalysisLines, 10, currentY);
-              currentY += (individualAnalysisLines.length * doc.getLineHeight()) + 6; 
+              currentY += (individualAnalysisLines.length * doc.getLineHeight()) + 4; // Espaciado reducido
 
               // Improvement Feedback
               if (p.improvementFeedback) {
@@ -454,7 +482,7 @@ const App: React.FC = () => {
                   doc.setFont("helvetica", "bold");
                   doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
                   doc.text('MEJORA DE RENDIMIENTO', 10, currentY);
-                  currentY += 6; 
+                  currentY += 4; // Espaciado reducido
                   
                   // Puntos Fuertes
                   if (strengths.length > 0) {
@@ -470,7 +498,7 @@ const App: React.FC = () => {
                           doc.text(strengthItemLines, 20, currentY);
                           currentY += (strengthItemLines.length * doc.getLineHeight());
                       });
-                      currentY += 4; 
+                      currentY += 3; // Espaciado reducido
                   }
 
                   // Áreas de Mejora
@@ -487,7 +515,7 @@ const App: React.FC = () => {
                           doc.text(weaknessItemLines, 20, currentY);
                           currentY += (weaknessItemLines.length * doc.getLineHeight());
                       });
-                      currentY += 4; 
+                      currentY += 3; // Espaciado reducido
                   }
 
                   // Consejos
@@ -506,16 +534,16 @@ const App: React.FC = () => {
                       });
                   }
               }
-              currentY += 10; 
+              currentY += 8; // Espaciado reducido después de un jugador completo
           });
         } else {
           doc.setFontSize(10);
           doc.setFont("helvetica", "normal");
           doc.setTextColor(greyTextColor[0], greyTextColor[1], greyTextColor[2]);
           doc.text('Sin registros destacados en esta zona.', 10, currentY);
-          currentY += 10;
+          currentY += 8; // Espaciado reducido
         }
-        currentY += 15; 
+        currentY += 12; // Espaciado reducido después de una zona completa
       });
       console.log("exportToPDF: Análisis individual de jugadores añadido. currentY:", currentY);
 

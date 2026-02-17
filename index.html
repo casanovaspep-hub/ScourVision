@@ -37,7 +37,25 @@
 </script>
   <!-- Scripts globales para jsPDF y jspdf-autotable para asegurar el parcheo correcto -->
   <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script>
+    // Asegurar que jsPDF esté disponible como window.jsPDF (con 'J' mayúscula)
+    // Esto es crucial para la integración con React en un entorno de módulos ES.
+    if (typeof window.jsPDF === 'undefined' && typeof window.jspdf !== 'undefined') {
+      window.jsPDF = window.jspdf.jsPDF; // Esto cubre el caso de window.jspdf.jsPDF
+      console.log('jsPDF normalized to window.jsPDF');
+    } else if (typeof window.jsPDF === 'undefined' && typeof jsPDF !== 'undefined') {
+      window.jsPDF = jsPDF; // Esto cubre el caso de jsPDF definido sin window.jsPDF
+      console.log('jsPDF normalized from local scope to window.jsPDF');
+    }
+  </script>
   <script src="https://unpkg.com/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+  <script>
+    // El plugin jspdf-autotable está diseñado para parchar el objeto jsPDF global.
+    // Esta verificación solo es para depuración, el script del plugin debe hacer el trabajo.
+    if (typeof window.jsPDF !== 'undefined' && typeof (window.jsPDF.API as any)?.autoTable === 'undefined') {
+      console.warn('jspdf-autotable plugin may not have correctly patched window.jsPDF. Please ensure the plugin script is loaded and functions as expected.');
+    }
+  </script>
 </head>
 <body>
   <div id="root"></div>
